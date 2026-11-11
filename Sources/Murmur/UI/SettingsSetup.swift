@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage(Prefs.Key.micUID) private var micUID = ""
     @AppStorage(Prefs.Key.language) private var language = "en"
     @AppStorage(Prefs.Key.sounds) private var sounds = true
+    @AppStorage(Prefs.Key.keepOnClipboard) private var keepOnClipboard = false
     @AppStorage(Prefs.Key.modelID) private var modelID = ModelCatalog.defaultID
     @AppStorage(Prefs.Key.cleanupEngine) private var cleanupEngine = CleanupEngine.onDevice.rawValue
     @AppStorage(Prefs.Key.idleMinutes) private var idleMinutes = 5.0
@@ -60,6 +61,11 @@ struct SettingsView: View {
                     RowDivider()
                     SettingRow(title: "Sounds", detail: "A soft tick when listening starts and stops.") {
                         Toggle("Sounds", isOn: $sounds).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    RowDivider()
+                    SettingRow(title: "Keep dictation on clipboard",
+                               detail: "On: the text stays copied so you can paste it again. Off: whatever you had copied before is put back.") {
+                        Toggle("Keep dictation on clipboard", isOn: $keepOnClipboard).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     }
                 }
                 .padding(.horizontal, 16)

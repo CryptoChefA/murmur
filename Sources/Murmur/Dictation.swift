@@ -330,10 +330,19 @@ final class Dictation {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 
-    /// `Murmur --preview-notice "text"` shows a message for a few seconds, for checking its look.
+    /// `Murmur --preview-notice "text"` walks the pill through a pretend dictation that ends in
+    /// this message, for checking its look. Nothing is recorded.
     func previewNotice(_ text: String) {
-        guard state == .idle else { return }
-        notice(text, good: false, seconds: 6)
+        guard state == .idle, pill.phase == .hidden else { return }
+        pill.phase = .listening(handsFree: false)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            guard let self, self.state == .idle, self.pill.phase == .listening(handsFree: false) else { return }
+            self.pill.phase = .thinking
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                guard let self, self.state == .idle, self.pill.phase == .thinking else { return }
+                self.notice(text, good: false, seconds: 3)
+            }
+        }
     }
 
     /// Runs the same pipeline on typed text, for the "try it" box in Setup.

@@ -56,7 +56,8 @@ hotkey ─▶ record (AVAudioEngine, 16 kHz mono) ─▶ whisper.cpp large-v3-tu
   dictation is never lost.
 - **Styles:** per-app tone. Formal in Mail, casual in Messages, verbatim in
   Terminal and code editors, matched by bundle ID, editable.
-- **Insertion:** pasteboard + synthetic ⌘V, previous clipboard restored. If
+- **Insertion:** pasteboard + synthetic ⌘V, previous clipboard restored
+  (or the dictation left on it, a Settings switch). If
   Accessibility is not granted the text stays on the clipboard and the pill
   says so.
 
@@ -74,18 +75,22 @@ single accent, system font, no brand colour splashed on top of the user's work.
 
 ### 1. The orb
 
-A small dark glass sphere at the bottom-centre of the screen, shown only while
-dictating. Non-activating panel: it never steals focus from the app being
-typed into.
+A small liquid-chrome sphere at the bottom-centre of the screen, shown only
+while dictating. Non-activating panel: it never steals focus from the app
+being typed into.
 
-- Listening: a band of light across the sphere ripples with the microphone
-  level. Holding the key shows the orb alone (release is "done", Esc is
-  "cancel"); hands-free adds a small cancel (✕) and stop (■) beside it.
-- Thinking: the ripple slows to a shimmer while transcribing.
-- Done: the orb settles and fades; the text arriving is the confirmation. Messages show as one short
-  line in a dark capsule ("No microphone access", "Copied — paste with ⌘V").
-- Drawn in plain SwiftUI, no shader files. Animation stops completely when
-  the orb is hidden.
+- Listening: the orb stands alone in the centre. Its metal flows faster,
+  stirs harder, swells and brightens with the voice. Holding the key shows the
+  orb alone (release is "done", Esc is "cancel"); hands-free adds a small
+  cancel (✕) and stop (■) either side of it.
+- Thinking: the orb shrinks and slides left as a dark glass capsule opens
+  beside it reading "Transcribing".
+- Done: it fades out; the text arriving is the confirmation. A problem turns
+  the chrome red and shows one short line in the capsule ("Didn't hear
+  anything", "No microphone access").
+- One small Metal shader, compiled from source at first use, so there are no
+  shader files and the project still builds with Command Line Tools. Drawing
+  stops completely when the orb is hidden.
 
 ### 2. The menu-bar item
 

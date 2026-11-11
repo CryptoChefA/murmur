@@ -10,7 +10,7 @@ never leaves the machine.
 
 | | |
 |---|---|
-| ![Orb](docs/pill-handsfree-dark.png) | ![Styles](docs/styles-light.png) |
+| ![Orb](docs/orb-preview.png) | ![Styles](docs/styles-light.png) |
 
 ## What it does
 

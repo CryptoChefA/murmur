@@ -42,8 +42,10 @@ enum Inserter {
             return .copiedOnly
         }
 
-        // Keep what was on the clipboard so dictating doesn't cost the user their copy.
-        let saved: [[NSPasteboard.PasteboardType: Data]] = (pasteboard.pasteboardItems ?? []).map { item in
+        // Either the dictation stays on the clipboard (the user's choice in Settings), or what was
+        // there before is kept and put back, so dictating doesn't cost the user their copy.
+        let keep = Prefs.keepOnClipboard
+        let saved: [[NSPasteboard.PasteboardType: Data]] = keep ? [] : (pasteboard.pasteboardItems ?? []).map { item in
             var contents: [NSPasteboard.PasteboardType: Data] = [:]
             for type in item.types { if let data = item.data(forType: type) { contents[type] = data } }
             return contents
@@ -51,8 +53,8 @@ enum Inserter {
 
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        // Asks clipboard managers not to record this.
-        pasteboard.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        // Asks clipboard managers not to record this. Not when it is meant to stay.
+        if !keep { pasteboard.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType")) }
         let marker = pasteboard.changeCount
 
         let source = CGEventSource(stateID: .combinedSessionState)
@@ -71,6 +73,7 @@ enum Inserter {
             try? (existing + line).write(to: url, atomically: true, encoding: .utf8)
         }
 
+        if keep { return .pasted }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             // If something else has been copied since, leave it alone.
             guard pasteboard.changeCount == marker else { return }

@@ -24,11 +24,14 @@ final class PillController {
         let panel = self.panel ?? makePanel()
         self.panel = panel
         position(panel)
-        guard !panel.isVisible else { return }
-        panel.alphaValue = 0
-        panel.orderFrontRegardless()
+        // Already up, possibly mid-fade from the last dictation: bring it back rather than restart.
+        if !panel.isVisible {
+            panel.alphaValue = 0
+            panel.orderFrontRegardless()
+        }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
+            context.duration = 0.28
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
         }
     }
@@ -36,7 +39,9 @@ final class PillController {
     private func hide() {
         guard let panel, panel.isVisible else { return }
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.2
+            // A slow, easing fade: the orb keeps moving and sinks away rather than blinking off.
+            context.duration = 0.55
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             // Drop the whole view tree: nothing left to animate or redraw while idle.
@@ -48,7 +53,7 @@ final class PillController {
     }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 112),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 84),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -68,7 +73,7 @@ final class PillController {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
         guard let frame = screen?.visibleFrame else { return }
-        panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 22))
+        panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 18))
     }
 }
 
@@ -76,59 +81,68 @@ struct PillView: View {
     @ObservedObject var model: PillModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var motion = OrbMotion()
+    /// What was last on screen, kept drawn while the panel fades out.
+    @State private var lastShown: PillModel.Phase = .hidden
+
+    private var shown: PillModel.Phase { model.phase == .hidden ? lastShown : model.phase }
+
+    private var handsFree: Bool { if case .listening(true) = shown { return true } else { return false } }
+    private var listening: Bool { if case .listening = shown { return true } else { return false } }
+    private var problem: Bool { if case .notice(_, false) = shown { return true } else { return false } }
+
+    private var label: String {
+        switch shown {
+        case .hidden: return ""
+        case .listening: return "Listening"
+        case .thinking: return "Transcribing"
+        case .notice(let message, _): return message.isEmpty ? "Done" : message
+        }
+    }
 
     var body: some View {
-        ZStack {
-            content
-                .animation(.spring(response: 0.32, dampingFraction: 0.82), value: model.phase)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-
-    @ViewBuilder private var content: some View {
-        switch model.phase {
-        case .hidden:
-            EmptyView()
-        case .listening(let handsFree):
-            HStack(spacing: -4) {
-                // Holding the key needs no buttons: letting go is "done", Esc is "cancel".
-                if handsFree {
-                    PillButton(symbol: "xmark", help: "Cancel (Esc)") { Dictation.shared.cancel() }
-                }
-                orb(thinking: false)
-                if handsFree {
-                    PillButton(symbol: "stop.fill", help: "Finish", prominent: true) { Dictation.shared.finish() }
-                }
+        // While you speak the orb stands alone in the centre. When you finish it shrinks and slides
+        // to the left as a dark glass capsule opens beside it, saying what is happening.
+        HStack(spacing: listening ? 8 : 10) {
+            if handsFree {
+                PillButton(symbol: "xmark", help: "Cancel (Esc)") { Dictation.shared.cancel() }
+                    .transition(.opacity)
             }
-        case .thinking:
-            orb(thinking: true)
-        case .notice(let message, let good):
-            if message.isEmpty {
-                // Success needs no badge: the text appearing is the confirmation. The orb just settles and fades.
-                orb(thinking: true)
-            } else {
-                // Words only, on dark glass. No icon: the message is short enough to read at a glance.
-                Text(message)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.92))
+
+            MercuryOrb(motion: motion, model: model, thinking: !listening, alert: problem, still: reduceMotion)
+                .frame(width: listening ? 62 : 36, height: listening ? 62 : 36)
+                .background(Circle().fill(.black.opacity(0.5)).blur(radius: 5).offset(y: 3))
+
+            if !listening {
+                Text(label)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(problem ? 0.92 : 0.62))
                     .lineLimit(1)
-                    .padding(.horizontal, 16)
-                    .frame(height: 34)
-                    .modifier(DarkGlass(shape: Capsule()))
-                    .accessibilityLabel(good ? message : "Problem: \(message)")
+                    .fixedSize()
+                    .id(label)
+                    .transition(.opacity)
+                    .accessibilityLabel(problem ? "Problem: \(label)" : label)
+            }
+
+            // Holding the key needs no buttons: letting go is "done", Esc is "cancel".
+            if handsFree {
+                PillButton(symbol: "stop.fill", help: "Finish", prominent: true) { Dictation.shared.finish() }
+                    .transition(.opacity)
             }
         }
-    }
-
-    private func orb(thinking: Bool) -> some View {
-        // Redrawn every display frame while visible. Hidden, the timeline does not exist.
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
-            let _ = motion.step(toward: model.voice, at: timeline.date, thinking: thinking)
-            OrbView(energy: reduceMotion ? (thinking ? 0.2 : model.voice) : motion.energy, phases: motion.phases)
+        .padding(.leading, listening ? 0 : 5)
+        .padding(.trailing, listening ? 0 : 18)
+        .frame(height: listening ? 62 : 46)
+        .background {
+            Color.clear
+                .modifier(DarkGlass(shape: Capsule()))
+                .opacity(listening ? 0 : 1)
         }
-        .frame(width: 96, height: 96)
-        .shadow(color: .black.opacity(0.45), radius: 10, y: 5)
+        .animation(.spring(response: 0.42, dampingFraction: 0.84), value: shown)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { lastShown = model.phase }
+        .onChange(of: model.phase) { _, phase in
+            if phase != .hidden { lastShown = phase }
+        }
     }
 }
 
@@ -176,10 +190,15 @@ private struct ButtonSurface: ViewModifier {
 /// a blurred HUD material with a hairline edge everywhere else.
 struct DarkGlass<S: InsettableShape>: ViewModifier {
     let shape: S
+    @Environment(\.staticRender) private var staticRender
 
     func body(content: Content) -> some View {
         Group {
-            if #available(macOS 26.0, *) {
+            if staticRender {
+                content
+                    .background(shape.fill(Color(red: 0.10, green: 0.10, blue: 0.13)))
+                    .overlay(shape.strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+            } else if #available(macOS 26.0, *) {
                 content.glassEffect(.regular.tint(Color.black.opacity(0.62)), in: shape)
             } else {
                 content

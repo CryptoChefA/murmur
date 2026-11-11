@@ -21,6 +21,7 @@ enum Prefs {
             Key.retentionDays: 0,
             Key.micUID: "",
             Key.streaming: true,
+            Key.keepOnClipboard: false,
         ])
     }
 
@@ -40,6 +41,8 @@ enum Prefs {
         static let micUID = "micUID"
         /// Transcribe finished phrases while the user is still speaking.
         static let streaming = "streaming"
+        /// Leave the dictated text on the clipboard instead of putting the previous copy back.
+        static let keepOnClipboard = "keepOnClipboard"
         static let didOnboard = "didOnboard"
     }
 
@@ -54,6 +57,7 @@ enum Prefs {
     static var removeFillers: Bool { defaults.bool(forKey: Key.removeFillers) }
     static var retentionDays: Int { defaults.integer(forKey: Key.retentionDays) }
     static var streaming: Bool { defaults.bool(forKey: Key.streaming) }
+    static var keepOnClipboard: Bool { defaults.bool(forKey: Key.keepOnClipboard) }
     static var micUID: String { defaults.string(forKey: Key.micUID) ?? "" }
 
     /// English-only models can't be asked for anything else.
