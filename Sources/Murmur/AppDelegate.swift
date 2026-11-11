@@ -185,6 +185,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             w.title = "Murmur"
             w.titlebarAppearsTransparent = true
             w.titleVisibility = .hidden
+            w.appearance = NSAppearance(named: .darkAqua)
+            w.backgroundColor = NSColor(srgbRed: 0.035, green: 0.040, blue: 0.075, alpha: 1)
             w.isMovableByWindowBackground = true
             w.minSize = NSSize(width: 780, height: 520)
             w.isReleasedWhenClosed = false

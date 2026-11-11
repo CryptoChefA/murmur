@@ -70,7 +70,8 @@ hotkey ─▶ record (AVAudioEngine, 16 kHz mono) ─▶ whisper.cpp large-v3-tu
 
 ## Interface
 
-Three surfaces, all appearance-aware (light and dark), monochrome with a
+Three surfaces. The window and the orb's pill are always dark, in the orb's
+colours (navy-black, silver, pale indigo); monochrome with a
 single accent, system font, no brand colour splashed on top of the user's work.
 
 ### 1. The orb

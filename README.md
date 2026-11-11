@@ -87,7 +87,7 @@ identities altogether, use `SIGN_ID=-` (the dictation key and pasting will not w
 ./build.sh                                              # build + run checks
 .build/release/MurmurCheck                              # text rules, cleanup guard, stats
 .build/release/Murmur --transcribe clip.wav --cleanup polished   # speech path, no mic needed
-.build/release/Murmur --render-screens out/             # every screen as PNG, light and dark
+.build/release/Murmur --render-screens out/             # every screen as PNG
 ```
 
 `PROJECT_PROMPT.md` describes the product and its interface in full.

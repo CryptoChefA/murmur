@@ -92,25 +92,23 @@ enum ScreenRenderer {
     }
 }
 
-/// The app icon, drawn in code so the repo needs no binary artwork.
+/// The app icon, drawn in code so the repo needs no binary artwork: the chrome orb on navy.
 struct AppIcon: View {
-    private let bars: [CGFloat] = [0.22, 0.42, 0.7, 0.36, 0.56, 0.26]
-
     var body: some View {
         GeometryReader { geo in
             let side = geo.size.width
             ZStack {
                 RoundedRectangle(cornerRadius: side * 0.2237, style: .continuous)
-                    .fill(LinearGradient(colors: [Color(red: 0.47, green: 0.43, blue: 0.98), Color(red: 0.22, green: 0.18, blue: 0.62)],
+                    .fill(LinearGradient(colors: [Color(red: 0.11, green: 0.13, blue: 0.24), Color(red: 0.02, green: 0.025, blue: 0.06)],
                                          startPoint: .top, endPoint: .bottom))
+                    .overlay(RoundedRectangle(cornerRadius: side * 0.2237, style: .continuous)
+                        .strokeBorder(LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.03)],
+                                                     startPoint: .top, endPoint: .bottom), lineWidth: side * 0.006))
                     .padding(side * 0.098)
-                    .shadow(color: .black.opacity(0.25), radius: side * 0.02, y: side * 0.012)
-                HStack(spacing: side * 0.042) {
-                    ForEach(Array(bars.enumerated()), id: \.offset) { _, height in
-                        Capsule().fill(Color.white.opacity(0.96))
-                            .frame(width: side * 0.058, height: side * 0.62 * height)
-                    }
-                }
+                    .shadow(color: .black.opacity(0.3), radius: side * 0.02, y: side * 0.012)
+                StillOrb(flow: 3.1, energy: 0.55, alert: 0)
+                    .frame(width: side * 0.56, height: side * 0.56)
+                    .shadow(color: .black.opacity(0.5), radius: side * 0.03, y: side * 0.02)
             }
         }
     }

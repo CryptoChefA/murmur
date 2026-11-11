@@ -46,17 +46,26 @@ final class Navigation: ObservableObject {
     @Published var section: AppSection = .overview
 }
 
+/// The window takes its colours from the orb: deep navy-black, cool silver, a pale indigo
+/// accent. It is always dark, like the orb's pill.
 enum Theme {
-    static let accent = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 0.62, green: 0.60, blue: 1.0, alpha: 1)
-            : NSColor(srgbRed: 0.34, green: 0.31, blue: 0.87, alpha: 1)
-    })
-    static let card = Color(nsColor: .controlBackgroundColor)
-    static let window = Color(nsColor: .windowBackgroundColor)
-    static let hairline = Color.primary.opacity(0.08)
-    static let good = Color(nsColor: .systemGreen)
-    static let warn = Color(nsColor: .systemOrange)
+    /// Pale indigo, the cool end of the chrome.
+    static let accent = Color(red: 0.65, green: 0.71, blue: 0.99)
+    /// Cool silver, the bright end.
+    static let silver = Color(red: 0.80, green: 0.84, blue: 0.88)
+    static let card = Color(red: 0.075, green: 0.085, blue: 0.135)
+    static let window = Color(red: 0.035, green: 0.040, blue: 0.075)
+    static let sidebar = Color(red: 0.027, green: 0.031, blue: 0.060)
+    static let hairline = Color.white.opacity(0.075)
+    static let good = Color(red: 0.45, green: 0.86, blue: 0.68)
+    static let warn = Color(red: 1.0, green: 0.62, blue: 0.40)
+
+    /// Brushed-chrome lettering for headings.
+    static let chrome = LinearGradient(colors: [.white, Color(red: 0.72, green: 0.77, blue: 0.90)],
+                                       startPoint: .top, endPoint: .bottom)
+    /// A faint sheen across the top of the window, as if lit from the upper left.
+    static let sheen = RadialGradient(colors: [Color(red: 0.36, green: 0.42, blue: 0.75).opacity(0.16), .clear],
+                                      center: .topLeading, startRadius: 0, endRadius: 620)
 }
 
 struct RootView: View {
@@ -72,6 +81,7 @@ struct RootView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(nav.section.title)
                             .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(Theme.chrome)
                         Text(nav.section.subtitle)
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
@@ -84,10 +94,12 @@ struct RootView: View {
                 .frame(maxWidth: 760, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .background(Theme.sheen)
             .background(Theme.window)
         }
         .background(Theme.window)
         .tint(Theme.accent)
+        .preferredColorScheme(.dark)
         .frame(minWidth: 780, minHeight: 520)
         .ignoresSafeArea()
     }
@@ -112,11 +124,11 @@ private struct Sidebar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                Image(systemName: "waveform")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Theme.accent)
+                StillOrb(flow: 3.1, energy: 0.35, alert: 0)
+                    .frame(width: 20, height: 20)
                 Text("Murmur")
                     .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.chrome)
             }
             .padding(.leading, 10)
             .padding(.top, 44)
@@ -138,8 +150,7 @@ private struct Sidebar: View {
         .padding(.horizontal, 10)
         .padding(.bottom, 8)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color.primary.opacity(0.035))
-        .background(Theme.window)
+        .background(Theme.sidebar)
     }
 }
 
@@ -162,7 +173,8 @@ private struct SidebarRow: View {
             }
             .padding(.horizontal, 10)
             .frame(height: 30)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(selected ? 0.09 : (hovering ? 0.045 : 0))))
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(selected ? 0.085 : (hovering ? 0.04 : 0))))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.white.opacity(selected ? 0.10 : 0), lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -181,8 +193,10 @@ struct Card<Content: View>: View {
         content
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.card))
+            // Lit from above, like the rim of the pill.
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(
+                LinearGradient(colors: [.white.opacity(0.14), .white.opacity(0.04)], startPoint: .top, endPoint: .bottom), lineWidth: 1))
     }
 }
 
