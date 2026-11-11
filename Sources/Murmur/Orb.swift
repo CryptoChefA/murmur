@@ -31,12 +31,13 @@ struct OrbView: View {
 
                 // The surface line. It sags slightly at the centre like liquid seen through a lens.
                 let energy = thinking ? 0.25 : level
-                let amplitude = r * (0.035 + 0.16 * energy)
-                let baseY = centre.y - r * 0.02
+                let amplitude = r * (0.03 + 0.42 * energy)
+                // Louder speech lifts the liquid as well as rippling it.
+                let baseY = centre.y - r * 0.02 - r * 0.10 * energy
                 func surfaceY(_ x: CGFloat) -> CGFloat {
                     let u = (x - rect.minX) / side                      // 0...1 across the sphere
                     let sag = sin(u * .pi) * r * 0.20
-                    let speed = thinking ? 1.2 : 3.2
+                    let speed = thinking ? 1.2 : 3.0 + 5.0 * Double(energy)
                     let wave = sin(Double(u) * 7.0 + time * speed) * 0.6 + sin(Double(u) * 13.0 - time * speed * 1.7) * 0.4
                     return baseY + sag + CGFloat(wave) * amplitude * sin(u * .pi)
                 }
@@ -61,12 +62,13 @@ struct OrbView: View {
                 // A bloom at the centre of the line, where the light is strongest.
                 inner.drawLayer { bloom in
                     bloom.addFilter(.blur(radius: r * 0.16))
-                    let spot = CGRect(x: centre.x - r * 0.42, y: surfaceY(centre.x) - r * 0.10, width: r * 0.84, height: r * 0.20)
-                    bloom.fill(Path(ellipseIn: spot), with: .color(.white.opacity(0.80 + 0.20 * energy)))
+                    let grow = 1 + 0.9 * energy
+                    let spot = CGRect(x: centre.x - r * 0.42 * grow, y: surfaceY(centre.x) - r * 0.10 * grow, width: r * 0.84 * grow, height: r * 0.20 * grow)
+                    bloom.fill(Path(ellipseIn: spot), with: .color(.white.opacity(0.45 + 0.55 * energy)))
                 }
 
                 // 3. The band of light, split into warm and cool edges like light through thick glass.
-                let glow = 0.75 + 0.25 * energy
+                let glow = 0.45 + 0.55 * energy
                 inner.drawLayer { warm in
                     warm.addFilter(.blur(radius: r * 0.10))
                     warm.translateBy(x: 0, y: -r * 0.05)

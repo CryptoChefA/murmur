@@ -34,6 +34,10 @@ final class WhisperEngine: @unchecked Sendable {
     static var contextFloor = 512
 
     private init() {
+        // ggml's Metal backend otherwise starts a loop that wakes every 5 ms for the life of the
+        // process to keep GPU memory wired. Murmur unloads the model when idle, so it gains
+        // nothing from that; measured speed is the same without it.
+        setenv("GGML_METAL_NO_RESIDENCY", "1", 1)
         whisper_log_set({ _, _, _ in }, nil)
     }
 

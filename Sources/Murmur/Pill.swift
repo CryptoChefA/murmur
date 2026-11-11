@@ -84,11 +84,6 @@ struct PillView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// The last few microphone readings averaged, so the ripple swells rather than jumps.
-    private var level: CGFloat {
-        let recent = model.levels.suffix(3)
-        return CGFloat(recent.reduce(0, +)) / CGFloat(max(recent.count, 1))
-    }
 
     @ViewBuilder private var content: some View {
         switch model.phase {
@@ -136,10 +131,15 @@ struct PillView: View {
     private func orb(thinking: Bool) -> some View {
         // The timeline exists only while the orb is on screen; hidden, nothing ticks.
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { timeline in
-            OrbView(level: level, time: reduceMotion ? 0.8 : timeline.date.timeIntervalSinceReferenceDate, thinking: thinking)
+            OrbView(level: thinking ? 0 : model.voice,
+                    time: reduceMotion ? 0.8 : timeline.date.timeIntervalSinceReferenceDate, thinking: thinking)
         }
         .frame(width: 58, height: 58)
+        // The whole sphere swells with the voice, and its light spills out around it.
+        .scaleEffect(1 + (thinking ? 0 : 0.14 * model.voice))
+        .shadow(color: Color(red: 1.0, green: 0.72, blue: 0.45).opacity(thinking ? 0 : 0.55 * model.voice), radius: 10 + 10 * model.voice)
         .shadow(color: .black.opacity(0.45), radius: 12, y: 6)
+        .animation(.spring(response: 0.18, dampingFraction: 0.7), value: model.voice)
     }
 }
 
