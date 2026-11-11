@@ -72,18 +72,20 @@ hotkey ─▶ record (AVAudioEngine, 16 kHz mono) ─▶ whisper.cpp large-v3-tu
 Three surfaces, all appearance-aware (light and dark), monochrome with a
 single accent, system font, no brand colour splashed on top of the user's work.
 
-### 1. The pill
+### 1. The orb
 
-A small capsule at the bottom-centre of the screen, shown only while
+A small dark glass sphere at the bottom-centre of the screen, shown only while
 dictating. Non-activating panel: it never steals focus from the app being
 typed into.
 
-- Listening: live waveform driven by microphone level, elapsed time, cancel
-  (✕) on the left, finish (✓ for push-to-talk, ■ for hands-free) on the right.
-- Thinking: the waveform settles into a slow shimmer while transcribing.
-- Done: a brief check, then it fades. Errors show one short line
-  ("No microphone access", "Copied — paste with ⌘V").
-- Animations stop completely when the pill is hidden.
+- Listening: a band of light across the sphere ripples with the microphone
+  level. Holding the key shows the orb alone (release is "done", Esc is
+  "cancel"); hands-free adds a small cancel (✕) and stop (■) beside it.
+- Thinking: the ripple slows to a shimmer while transcribing.
+- Done: a brief check on the orb, then it fades. Messages show as one short
+  line in a dark capsule ("No microphone access", "Copied — paste with ⌘V").
+- Drawn in plain SwiftUI, no shader files. Animation stops completely when
+  the orb is hidden.
 
 ### 2. The menu-bar item
 

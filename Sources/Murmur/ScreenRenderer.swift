@@ -39,6 +39,19 @@ enum ScreenRenderer {
             }
         }
 
+        // The orb at a few voice levels, on the kind of backdrop it will float over.
+        let orbs = HStack(spacing: 36) {
+            OrbView(level: 0.05, time: 0.4).frame(width: 150, height: 150)
+            OrbView(level: 0.5, time: 1.3).frame(width: 150, height: 150)
+            OrbView(level: 1.0, time: 2.1).frame(width: 150, height: 150)
+            OrbView(level: 0, time: 0.8, thinking: true).frame(width: 150, height: 150)
+            OrbView(level: 0.5, time: 1.3).frame(width: 56, height: 56)
+        }
+        .padding(40)
+        .background(Color(white: 0.16))
+        snapshot(orbs, size: NSSize(width: 900, height: 230), appearance: .darkAqua,
+                 to: directory.appendingPathComponent("orb-preview.png"))
+
         renderIcon(to: directory.appendingPathComponent("icon-1024.png"))
     }
 

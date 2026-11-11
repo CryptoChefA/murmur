@@ -10,7 +10,7 @@ never leaves the machine.
 
 | | |
 |---|---|
-| ![Pill](docs/pill-listening-dark.png) | ![Styles](docs/styles-light.png) |
+| ![Orb](docs/pill-handsfree-dark.png) | ![Styles](docs/styles-light.png) |
 
 ## What it does
 
