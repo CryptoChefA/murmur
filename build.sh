@@ -49,14 +49,19 @@ rm -rf "$TMP"
 
 # Sign with a stable identity when there is one, so macOS keeps the app's permissions across
 # rebuilds. macOS 27 ignores Accessibility grants for ad-hoc signed apps entirely.
-# Run scripts/make-signing-cert.sh once to create a local identity, or set SIGN_ID yourself.
-if [ -z "${SIGN_ID:-}" ] && security find-certificate -c "Murmur Local Signing" >/dev/null 2>&1; then
+# The first build creates that identity for you (a self-signed certificate in your login
+# keychain, used only to sign this app). Set SIGN_ID=- to opt out and sign ad hoc instead.
+if [ -z "${SIGN_ID:-}" ]; then
+    if ! security find-certificate -c "Murmur Local Signing" >/dev/null 2>&1; then
+        echo "First build: creating a local signing identity so macOS keeps Murmur's permissions."
+        ./scripts/make-signing-cert.sh
+    fi
     SIGN_ID="Murmur Local Signing"
 fi
-if [ -z "${SIGN_ID:-}" ]; then
-    echo "warning: ad-hoc signing. Run scripts/make-signing-cert.sh first, or the Fn key and pasting may not work."
+if [ "$SIGN_ID" = "-" ]; then
+    echo "warning: ad-hoc signing. On macOS 27 the dictation key and pasting will not work."
 fi
-codesign --force --options runtime --entitlements Resources/Murmur.entitlements --sign "${SIGN_ID:--}" "$APP"
+codesign --force --options runtime --entitlements Resources/Murmur.entitlements --sign "$SIGN_ID" "$APP"
 
 echo "Built $APP ($(du -sh "$APP" | cut -f1))"
 if [ "${1:-}" = "--install" ]; then

@@ -49,8 +49,7 @@ turned on; without it Murmur still transcribes and applies its rule-based cleanu
 
 ```bash
 brew install cmake
-git clone https://github.com/YOUR_NAME/murmur && cd murmur
-./scripts/make-signing-cert.sh
+git clone https://github.com/CryptoChefA/murmur && cd murmur
 ./build.sh --install
 ```
 
@@ -64,14 +63,12 @@ If you use Fn, set *System Settings › Keyboard › Press 🌐 key to* **Do Not
 ### Signing
 
 macOS ties permissions to an app's signature, and macOS 27 does not honour Accessibility for ad-hoc signed
-apps at all. Create a local signing identity once, before building:
+apps at all. So the first `./build.sh` creates a self-signed certificate named "Murmur Local Signing" in your
+login keychain and signs the app with it. It is used for nothing else, and your permissions then survive
+rebuilds. macOS may ask once whether `codesign` can use the key.
 
-```bash
-./scripts/make-signing-cert.sh
-```
-
-It adds a self-signed certificate ("Murmur Local Signing") to your login keychain; `build.sh` uses it
-automatically, and your permissions then survive rebuilds. To use your own identity instead, set `SIGN_ID`.
+To sign with your own identity, run `SIGN_ID="Developer ID Application: …" ./build.sh`. To skip signing
+identities altogether, use `SIGN_ID=-` (the dictation key and pasting will not work on macOS 27).
 
 ### Scripting
 
