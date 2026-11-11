@@ -48,7 +48,7 @@ final class PillController {
     }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 84),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 112),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -68,13 +68,14 @@ final class PillController {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
         guard let frame = screen?.visibleFrame else { return }
-        panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 36))
+        panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 22))
     }
 }
 
 struct PillView: View {
     @ObservedObject var model: PillModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var motion = OrbMotion()
 
     var body: some View {
         ZStack {
@@ -90,7 +91,7 @@ struct PillView: View {
         case .hidden:
             EmptyView()
         case .listening(let handsFree):
-            HStack(spacing: 10) {
+            HStack(spacing: -4) {
                 // Holding the key needs no buttons: letting go is "done", Esc is "cancel".
                 if handsFree {
                     PillButton(symbol: "xmark", help: "Cancel (Esc)") { Dictation.shared.cancel() }
@@ -129,17 +130,13 @@ struct PillView: View {
     }
 
     private func orb(thinking: Bool) -> some View {
-        // The timeline exists only while the orb is on screen; hidden, nothing ticks.
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { timeline in
-            OrbView(level: thinking ? 0 : model.voice,
-                    time: reduceMotion ? 0.8 : timeline.date.timeIntervalSinceReferenceDate, thinking: thinking)
+        // Redrawn every display frame while visible. Hidden, the timeline does not exist.
+        TimelineView(.animation(paused: reduceMotion)) { timeline in
+            let _ = motion.step(toward: model.voice, at: timeline.date, thinking: thinking)
+            OrbView(energy: reduceMotion ? (thinking ? 0.2 : model.voice) : motion.energy, phases: motion.phases)
         }
-        .frame(width: 58, height: 58)
-        // The whole sphere swells with the voice, and its light spills out around it.
-        .scaleEffect(1 + (thinking ? 0 : 0.14 * model.voice))
-        .shadow(color: Color(red: 1.0, green: 0.72, blue: 0.45).opacity(thinking ? 0 : 0.55 * model.voice), radius: 10 + 10 * model.voice)
-        .shadow(color: .black.opacity(0.45), radius: 12, y: 6)
-        .animation(.spring(response: 0.18, dampingFraction: 0.7), value: model.voice)
+        .frame(width: 96, height: 96)
+        .shadow(color: .black.opacity(0.45), radius: 10, y: 5)
     }
 }
 

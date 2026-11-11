@@ -18,9 +18,10 @@ final class PillModel: ObservableObject {
 
     static let barCount = 22
 
-    /// 0...1 loudness of the voice above the room's background, with a fast rise and a slower
-    /// fall so the orb jumps with each syllable and settles between words.
-    @Published var voice: CGFloat = 0
+    /// 0...1 loudness of the voice above the room's background. Deliberately not @Published:
+    /// the orb reads it every display frame and does its own smoothing, so publishing it would
+    /// only add redraws.
+    var voice: CGFloat = 0
     private var floor: Float = 1
 
     func push(_ level: Float) {
@@ -32,8 +33,7 @@ final class PillModel: ObservableObject {
         // The quietest recent level is the room. It follows drops at once and creeps up slowly.
         floor = min(floor + 0.003, level)
         let above = CGFloat(max(0, level - floor - 0.04)) / 0.30
-        let target = min(1, above)
-        voice = target > voice ? voice + (target - voice) * 0.7 : voice * 0.80
+        voice = min(1, above)
     }
 
     func resetLevels() {

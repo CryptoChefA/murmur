@@ -31,25 +31,33 @@ enum ScreenRenderer {
                 let model = PillModel()
                 model.phase = phase
                 model.started = Date().addingTimeInterval(-7)
+                model.voice = 0.6
                 model.levels = (0..<PillModel.barCount).map { i in
                     Float(0.25 + 0.6 * abs(sin(Double(i) * 0.9)) * abs(cos(Double(i) * 0.37)))
                 }
-                snapshot(PillView(model: model).background(Theme.window), size: NSSize(width: 340, height: 84),
+                snapshot(PillView(model: model).background(Theme.window), size: NSSize(width: 340, height: 112),
                          appearance: appearance, to: directory.appendingPathComponent("pill-\(name)-\(suffix).png"))
             }
         }
 
-        // The orb at a few voice levels, on the kind of backdrop it will float over.
-        let orbs = HStack(spacing: 36) {
-            OrbView(level: 0.05, time: 0.4).frame(width: 150, height: 150)
-            OrbView(level: 0.5, time: 1.3).frame(width: 150, height: 150)
-            OrbView(level: 1.0, time: 2.1).frame(width: 150, height: 150)
-            OrbView(level: 0, time: 0.8, thinking: true).frame(width: 150, height: 150)
-            OrbView(level: 0.5, time: 1.3).frame(width: 56, height: 56)
+        // One spoken syllable, a frame every 1/15 s, to judge how the orb moves rather than how it poses.
+        let motion = OrbMotion()
+        var frames: [(CGFloat, [Double])] = []
+        let start = Date(timeIntervalSinceReferenceDate: 1_000)
+        for tick in 0..<96 {
+            let t = Double(tick) / 60
+            let target: CGFloat = (t > 0.15 && t < 0.75) ? 0.9 : (t > 1.0 && t < 1.25 ? 0.5 : 0)
+            motion.step(toward: target, at: start.addingTimeInterval(t), thinking: false)
+            if tick % 8 == 4 { frames.append((motion.energy, motion.phases)) }
         }
-        .padding(40)
+        let strip = HStack(spacing: 0) {
+            ForEach(Array(frames.enumerated()), id: \.offset) { _, frame in
+                OrbView(energy: frame.0, phases: frame.1).frame(width: 150, height: 150)
+            }
+        }
+        .padding(.vertical, 20)
         .background(Color(white: 0.16))
-        snapshot(orbs, size: NSSize(width: 900, height: 230), appearance: .darkAqua,
+        snapshot(strip, size: NSSize(width: CGFloat(frames.count) * 150, height: 190), appearance: .darkAqua,
                  to: directory.appendingPathComponent("orb-preview.png"))
 
         renderIcon(to: directory.appendingPathComponent("icon-1024.png"))

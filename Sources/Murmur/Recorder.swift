@@ -47,7 +47,7 @@ final class Recorder {
         lock.lock(); samples.removeAll(keepingCapacity: true); samples.reserveCapacity(16_000 * 30); peak = 0; detector = PauseDetector(); lock.unlock()
 
         let ratio = 16_000 / format.sampleRate
-        input.installTap(onBus: 0, bufferSize: 2_048, format: format) { [weak self] buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, _ in
             self?.consume(buffer, ratio: ratio)
         }
         engine.prepare()
