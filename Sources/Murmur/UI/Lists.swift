@@ -179,11 +179,11 @@ struct StylesView: View {
             Card(padding: 0) {
                 VStack(spacing: 0) {
                     SettingRow(title: "Remove “um” and “uh”", detail: "Applied before the AI, so it works with cleanup off.") {
-                        Toggle("", isOn: $removeFillers).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        Toggle("Remove “um” and “uh”", isOn: $removeFillers).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     }
                     RowDivider()
                     SettingRow(title: "Spoken line breaks", detail: "Say “new line” or “new paragraph”.") {
-                        Toggle("", isOn: $spokenCommands).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        Toggle("Spoken line breaks", isOn: $spokenCommands).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     }
                 }
                 .padding(.horizontal, 16)

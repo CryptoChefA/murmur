@@ -35,11 +35,11 @@ struct SettingsView: View {
                     }
                     RowDivider()
                     SettingRow(title: "Hands-free", detail: "Double-tap the key to keep listening; tap once more to finish.") {
-                        Toggle("", isOn: $handsFree).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        Toggle("Hands-free", isOn: $handsFree).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     }
                     RowDivider()
                     SettingRow(title: "Transcribe while speaking", detail: "Starts on each phrase when you pause, so long dictations appear sooner. Uses a little more power while you talk.") {
-                        Toggle("", isOn: $streaming).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        Toggle("Transcribe while speaking", isOn: $streaming).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     }
                     RowDivider()
                     SettingRow(title: "Microphone") {
@@ -59,7 +59,7 @@ struct SettingsView: View {
                     }
                     RowDivider()
                     SettingRow(title: "Sounds", detail: "A soft tick when listening starts and stops.") {
-                        Toggle("", isOn: $sounds).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        Toggle("Sounds", isOn: $sounds).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -121,7 +121,7 @@ struct SettingsView: View {
                     }
                     RowDivider()
                     SettingRow(title: "Open at login") {
-                        Toggle("", isOn: $launchAtLogin).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        Toggle("Open at login", isOn: $launchAtLogin).labelsHidden().toggleStyle(.switch).controlSize(.small)
                             .onChange(of: launchAtLogin) { _, on in
                                 do {
                                     if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
@@ -195,19 +195,23 @@ private struct ModelRow: View {
             } else if installed {
                 if !selected {
                     Button("Use") { selectedID = model.id }
+                        .accessibilityLabel("Use \(model.name)")
                     IconButton(symbol: "trash", help: "Delete \(model.name)") { downloader.delete(model) }
                 } else {
                     Text("In use").font(.system(size: 11.5)).foregroundStyle(.secondary)
                 }
             } else {
                 Button("Download") { downloader.download(model) }
+                    .accessibilityLabel("Download \(model.name)")
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
         .onTapGesture { if installed { selectedID = model.id } }
-        .accessibilityElement(children: .combine)
+        // Children stay separate elements so Download, Use and Delete are each reachable by VoiceOver.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(model.name)
     }
 }
 
