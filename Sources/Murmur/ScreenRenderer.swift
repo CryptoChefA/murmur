@@ -45,7 +45,7 @@ enum ScreenRenderer {
                 model.levels = (0..<PillModel.barCount).map { i in
                     Float(0.25 + 0.6 * abs(sin(Double(i) * 0.9)) * abs(cos(Double(i) * 0.37)))
                 }
-                snapshot(PillView(model: model).environment(\.staticRender, true).background(Theme.window), size: NSSize(width: 460, height: 100),
+                snapshot(PillView(model: model).environment(\.staticRender, true).background(Theme.window), size: NSSize(width: 460, height: 124),
                          appearance: appearance, to: directory.appendingPathComponent("pill-\(name)-\(suffix).png"))
             }
         }
@@ -70,6 +70,21 @@ enum ScreenRenderer {
         .background(Color(red: 0.05, green: 0.05, blue: 0.08))
         snapshot(strip, size: NSSize(width: CGFloat(frames.count + 1) * 150, height: 190), appearance: .darkAqua,
                  to: directory.appendingPathComponent("orb-preview.png"))
+
+        // The halftone look in its three moods: listening, transcribing, and a problem.
+        let moods: [(String, CGFloat, CGFloat, CGFloat)] = [("Listening", 0.75, 0, 0), ("Transcribing", 0.18, 0, 1), ("Didn't hear anything", 0.18, 1, 1)]
+        let globe = HStack(spacing: 0) {
+            ForEach(Array(moods.enumerated()), id: \.offset) { _, mood in
+                VStack(spacing: 0) {
+                    StillOrb(flow: 3.1, energy: mood.1, alert: mood.2, calm: mood.3, style: .halftone).frame(width: 184, height: 184)
+                    Text(mood.0).font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.8)).offset(y: -8)
+                }
+                .frame(width: 240, height: 230)
+            }
+        }
+        .background(Color(red: 0.05, green: 0.05, blue: 0.08))
+        snapshot(globe, size: NSSize(width: 720, height: 230), appearance: .darkAqua,
+                 to: directory.appendingPathComponent("halftone-preview.png"))
 
         renderIcon(to: directory.appendingPathComponent("icon-1024.png"))
     }

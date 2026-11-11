@@ -22,6 +22,7 @@ enum Prefs {
             Key.micUID: "",
             Key.streaming: true,
             Key.keepOnClipboard: false,
+            Key.orbStyle: "mercury",
         ])
     }
 
@@ -43,6 +44,8 @@ enum Prefs {
         static let streaming = "streaming"
         /// Leave the dictated text on the clipboard instead of putting the previous copy back.
         static let keepOnClipboard = "keepOnClipboard"
+        /// Which orb is drawn: "mercury" or "halftone".
+        static let orbStyle = "orbStyle"
         static let didOnboard = "didOnboard"
     }
 

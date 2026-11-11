@@ -53,7 +53,7 @@ final class PillController {
     }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 124),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -73,7 +73,7 @@ final class PillController {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
         guard let frame = screen?.visibleFrame else { return }
-        panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 12))
+        panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 4))
     }
 }
 
@@ -83,6 +83,7 @@ struct PillView: View {
     @State private var motion = OrbMotion()
     /// What was last on screen, kept drawn while the panel fades out.
     @State private var lastShown: PillModel.Phase = .hidden
+    @AppStorage(Prefs.Key.orbStyle) private var styleName = OrbStyle.mercury.rawValue
 
     private var shown: PillModel.Phase { model.phase == .hidden ? lastShown : model.phase }
 
@@ -100,6 +101,48 @@ struct PillView: View {
     }
 
     var body: some View {
+        Group {
+            if OrbStyle(rawValue: styleName) == .halftone { halftone } else { mercury }
+        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.84), value: shown)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { lastShown = model.phase }
+        .onChange(of: model.phase) { _, phase in
+            if phase != .hidden { lastShown = phase }
+        }
+    }
+
+    /// The halftone globe never moves: it stays in the centre and a quiet line beneath it says
+    /// what is happening. A problem turns it red and breaks it in two.
+    private var halftone: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                if handsFree {
+                    PillButton(symbol: "xmark", help: "Cancel (Esc)") { Dictation.shared.cancel() }
+                        .transition(.opacity)
+                }
+                MercuryOrb(motion: motion, model: model, thinking: !listening, alert: problem, still: reduceMotion, style: .halftone)
+                    .frame(width: 92, height: 92)
+                if handsFree {
+                    PillButton(symbol: "stop.fill", help: "Finish", prominent: true) { Dictation.shared.finish() }
+                        .transition(.opacity)
+                }
+            }
+            Text(label)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(.white.opacity(problem ? 0.96 : 0.78))
+                .shadow(color: .black.opacity(0.9), radius: 2.5, y: 1)
+                .shadow(color: .black.opacity(0.55), radius: 9)
+                .lineLimit(1)
+                .fixedSize()
+                .id(label)
+                .transition(.opacity)
+                .offset(y: -4)
+                .accessibilityLabel(problem ? "Problem: \(label)" : label)
+        }
+    }
+
+    private var mercury: some View {
         // While you speak the orb stands alone in the centre. When you finish it shrinks and slides
         // to the left as a dark glass capsule opens beside it, saying what is happening.
         HStack(spacing: listening ? 8 : 10) {
@@ -136,12 +179,6 @@ struct PillView: View {
             Color.clear
                 .modifier(DarkGlass(shape: Capsule()))
                 .opacity(listening ? 0 : 1)
-        }
-        .animation(.spring(response: 0.42, dampingFraction: 0.84), value: shown)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { lastShown = model.phase }
-        .onChange(of: model.phase) { _, phase in
-            if phase != .hidden { lastShown = phase }
         }
     }
 }

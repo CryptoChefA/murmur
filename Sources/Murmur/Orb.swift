@@ -14,13 +14,17 @@ final class OrbMotion {
     private(set) var flow: Double = 0
     /// 0 is the normal chrome, 1 is fully red: something went wrong.
     private(set) var alert: CGFloat = 0
+    /// 0 while listening, 1 while transcribing, eased between.
+    private(set) var calm: CGFloat = 0
     private var last: Date?
 
     func step(toward target: CGFloat, at date: Date, thinking: Bool, alert wantsAlert: Bool = false) {
         let dt = min(0.05, max(0, last.map { date.timeIntervalSince($0) } ?? 0))
         // The colour bleeds across rather than switching; a first frame has nothing to bleed from.
         if last == nil { alert = wantsAlert ? 1 : 0 }
+        if last == nil { calm = thinking ? 1 : 0 }
         alert += ((wantsAlert ? 1 : 0) - alert) * CGFloat(1 - exp(-9 * dt))
+        calm += ((thinking ? 1 : 0) - calm) * CGFloat(1 - exp(-6 * dt))
         last = date
 
         // While transcribing there is no voice: breathe slowly instead.
@@ -35,6 +39,23 @@ final class OrbMotion {
     }
 }
 
+/// The looks the orb can take. Chosen in Settings.
+enum OrbStyle: String, CaseIterable, Identifiable {
+    case mercury, halftone
+    var id: String { rawValue }
+    var label: String { self == .mercury ? "Mercury" : "Halftone" }
+    static var current: OrbStyle { OrbStyle(rawValue: Prefs.defaults.string(forKey: Prefs.Key.orbStyle) ?? "") ?? .mercury }
+}
+
+/// One frame's worth of numbers for the shader.
+struct OrbFrame {
+    var flow: Double
+    var energy: CGFloat
+    var swell: CGFloat = 0
+    var alert: CGFloat = 0
+    var calm: CGFloat = 0
+}
+
 /// Draws the orb: liquid chrome flowing over a sphere, in the spirit of the "Mercury" voice orb
 /// (voiceorbs.vercel.app). The shader is our own and is compiled from source when first shown,
 /// so the project still builds with Command Line Tools and ships no compiled shader file.
@@ -43,7 +64,7 @@ final class MercuryRenderer {
 
     let device: MTLDevice
     private let queue: MTLCommandQueue
-    private let pipeline: MTLRenderPipelineState
+    private let pipelines: [OrbStyle: MTLRenderPipelineState]
 
     private init?() {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { return nil }
@@ -52,35 +73,41 @@ final class MercuryRenderer {
             FileHandle.standardError.write(Data("Orb shader: \(error)\n".utf8))
             return nil
         }
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction = library.makeFunction(name: "orb_vertex")
-        descriptor.fragmentFunction = library.makeFunction(name: "orb_fragment")
-        descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
-        guard let pipeline = try? device.makeRenderPipelineState(descriptor: descriptor) else { return nil }
+        var built: [OrbStyle: MTLRenderPipelineState] = [:]
+        for (style, name) in [(OrbStyle.mercury, "orb_fragment"), (OrbStyle.halftone, "halftone_fragment")] {
+            let descriptor = MTLRenderPipelineDescriptor()
+            descriptor.vertexFunction = library.makeFunction(name: "orb_vertex")
+            descriptor.fragmentFunction = library.makeFunction(name: name)
+            descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+            guard let pipeline = try? device.makeRenderPipelineState(descriptor: descriptor) else { return nil }
+            built[style] = pipeline
+        }
         self.device = device
         self.queue = queue
-        self.pipeline = pipeline
+        self.pipelines = built
     }
 
-    private func encode(_ pass: MTLRenderPassDescriptor, flow: Double, energy: CGFloat, swell: CGFloat, alert: CGFloat) -> MTLCommandBuffer? {
-        guard let buffer = queue.makeCommandBuffer(), let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return nil }
-        var uniforms = SIMD4<Float>(Float(flow.truncatingRemainder(dividingBy: 4_000)), Float(energy), Float(alert), Float(swell))
+    private func encode(_ pass: MTLRenderPassDescriptor, _ frame: OrbFrame, style: OrbStyle) -> MTLCommandBuffer? {
+        guard let pipeline = pipelines[style], let buffer = queue.makeCommandBuffer(),
+              let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return nil }
+        var uniforms = [SIMD4<Float>(Float(frame.flow.truncatingRemainder(dividingBy: 4_000)), Float(frame.energy), Float(frame.alert), Float(frame.swell)),
+                        SIMD4<Float>(Float(frame.calm), 0, 0, 0)]
         encoder.setRenderPipelineState(pipeline)
-        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.size, index: 0)
+        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.stride * 2, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         return buffer
     }
 
-    func draw(in view: MTKView, flow: Double, energy: CGFloat, swell: CGFloat, alert: CGFloat) {
+    func draw(in view: MTKView, _ frame: OrbFrame, style: OrbStyle) {
         guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
-              let buffer = encode(pass, flow: flow, energy: energy, swell: swell, alert: alert) else { return }
+              let buffer = encode(pass, frame, style: style) else { return }
         buffer.present(drawable)
         buffer.commit()
     }
 
     /// One still frame, for screenshots and for checking the look without a display.
-    func image(side: Int, flow: Double, energy: CGFloat, alert: CGFloat) -> CGImage? {
+    func image(side: Int, _ frame: OrbFrame, style: OrbStyle = .mercury) -> CGImage? {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: side, height: side, mipmapped: false)
         descriptor.usage = [.renderTarget, .shaderRead]
         descriptor.storageMode = device.hasUnifiedMemory ? .shared : .managed
@@ -90,7 +117,7 @@ final class MercuryRenderer {
         pass.colorAttachments[0].loadAction = .clear
         pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         pass.colorAttachments[0].storeAction = .store
-        guard let buffer = encode(pass, flow: flow, energy: energy, swell: energy, alert: alert) else { return nil }
+        guard let buffer = encode(pass, frame, style: style) else { return nil }
         if !device.hasUnifiedMemory, let blit = buffer.makeBlitCommandEncoder() {
             blit.synchronize(resource: texture)
             blit.endEncoding()
@@ -130,8 +157,10 @@ final class MercuryRenderer {
         return rise * fall * body;
     }
 
-    fragment float4 orb_fragment(Varying in [[stage_in]], constant float4 &u [[buffer(0)]]) {
-        float flow = u.x, energy = u.y, alert = u.z, swell = u.w;
+    struct Uniforms { float4 a; float4 b; };
+
+    fragment float4 orb_fragment(Varying in [[stage_in]], constant Uniforms &U [[buffer(0)]]) {
+        float flow = U.a.x, energy = U.a.y, alert = U.a.z, swell = U.a.w;
 
         // The sphere swells a little with the voice.
         float2 uv = in.uv * (1.16 - 0.15 * energy);
@@ -168,6 +197,55 @@ final class MercuryRenderer {
 
         return float4(colour * mask, mask);
     }
+
+    // The halftone look: dots laid out along the lines of a slowly turning globe. Each dot is as
+    // big as the light falling on it, so the lit side is nearly solid and the far side thins out.
+    fragment float4 halftone_fragment(Varying in [[stage_in]], constant Uniforms &U [[buffer(0)]]) {
+        float flow = U.a.x, energy = U.a.y, alert = U.a.z, calm = U.b.x;
+        float2 view = in.uv * (1.34 - 0.10 * energy);
+
+        // A soft dark patch behind it, so pale dots read on any wallpaper.
+        float back = (1.0 - smoothstep(0.70, 1.30, length(view))) * 0.58;
+
+        // When something went wrong the globe breaks in two along a slanted line.
+        float2 across = normalize(float2(-0.62, 0.78));
+        float side = dot(view, across) >= 0.0 ? 1.0 : -1.0;
+        float2 uv = view - across * side * 0.10 * alert;
+        float whole = step(0.0, dot(uv, across) * side);
+
+        float r = length(uv);
+        float dots = 0.0;
+        if (r < 1.0 && whole > 0.5) {
+            float z = sqrt(1.0 - r * r);
+            float3 n = float3(uv, z);
+            // Turn it, then tip the pole toward the viewer a little.
+            float spin = flow * 0.32;
+            float3 p = float3(n.x * cos(spin) + n.z * sin(spin), n.y, -n.x * sin(spin) + n.z * cos(spin));
+            float tip = 0.42;
+            p = float3(p.x, p.y * cos(tip) - p.z * sin(tip), p.y * sin(tip) + p.z * cos(tip));
+
+            const float rows = 15.0;
+            const float pi = 3.14159265;
+            float lat = asin(clamp(p.y, -1.0, 1.0));
+            float v = lat / pi * rows;
+            float centre = (floor(v) + 0.5) / rows * pi;
+            float around = max(1.0, floor(2.0 * rows * cos(centre) + 0.5));
+            float u = atan2(p.x, p.z) / (2.0 * pi) * around;
+            float2 cell = float2((fract(u) - 0.5) * (2.0 * rows * cos(centre) / around), fract(v) - 0.5);
+            float d = length(cell);
+
+            float light = saturate(dot(n, normalize(float3(-0.50, 0.60, 0.62))) * 0.85 + 0.25);
+            float size = 0.47 * mix(0.10, 1.0, pow(light, 1.3));
+            size *= 0.78 + 0.50 * energy;                                        // louder, fuller
+            size *= 1.0 - 0.30 * calm * (0.55 + 0.45 * sin(lat * 5.0 - flow * 5.0)); // a wave while thinking
+            size *= 1.0 - 0.32 * alert;
+            size = min(size, 0.49);
+            float soft = clamp(fwidth(v) * 1.4, 0.004, 0.2);
+            dots = (1.0 - smoothstep(size - soft, size + soft, d)) * smoothstep(0.0, 0.14, z);
+        }
+        float3 ink = mix(float3(0.93, 0.95, 1.00), float3(1.00, 0.36, 0.30), alert);
+        return float4(ink * dots, dots + back * (1.0 - dots));
+    }
     """
 }
 
@@ -179,13 +257,14 @@ struct MercuryOrb: View {
     var thinking: Bool
     var alert: Bool
     var still: Bool
+    var style: OrbStyle = .mercury
     @Environment(\.staticRender) private var staticRender
 
     var body: some View {
         if staticRender || MercuryRenderer.shared == nil {
-            StillOrb(flow: 3.1, energy: thinking ? 0.18 : model.voice, alert: alert ? 1 : 0)
+            StillOrb(flow: 3.1, energy: thinking ? 0.18 : model.voice, alert: alert ? 1 : 0, calm: thinking ? 1 : 0, style: style)
         } else {
-            LiveOrb(motion: motion, model: model, thinking: thinking, alert: alert, still: still)
+            LiveOrb(motion: motion, model: model, thinking: thinking, alert: alert, still: still, style: style)
         }
     }
 }
@@ -195,11 +274,14 @@ struct StillOrb: View {
     var flow: Double
     var energy: CGFloat
     var alert: CGFloat
+    var calm: CGFloat = 0
+    var style: OrbStyle = .mercury
 
     var body: some View {
         GeometryReader { geo in
             let side = Int(max(geo.size.width, geo.size.height) * 2)
-            if let image = MercuryRenderer.shared?.image(side: max(side, 16), flow: flow, energy: energy, alert: alert) {
+            let frame = OrbFrame(flow: flow, energy: energy, swell: energy, alert: alert, calm: calm)
+            if let image = MercuryRenderer.shared?.image(side: max(side, 16), frame, style: style) {
                 Image(decorative: image, scale: 2).resizable()
             } else {
                 Circle().fill(LinearGradient(colors: [Color(white: 0.85), Color(red: 0.05, green: 0.06, blue: 0.16)],
@@ -216,6 +298,7 @@ private struct LiveOrb: NSViewRepresentable {
     var thinking: Bool
     var alert: Bool
     var still: Bool
+    var style: OrbStyle
 
     func makeCoordinator() -> Coordinator { Coordinator(motion: motion, model: model) }
 
@@ -233,6 +316,7 @@ private struct LiveOrb: NSViewRepresentable {
     func updateNSView(_ view: MTKView, context: Context) {
         context.coordinator.thinking = thinking
         context.coordinator.alert = alert
+        context.coordinator.style = style
         // Reduce Motion: a still orb that only changes when the state does.
         view.isPaused = still
         view.enableSetNeedsDisplay = still
@@ -244,6 +328,7 @@ private struct LiveOrb: NSViewRepresentable {
         let model: PillModel
         var thinking = false
         var alert = false
+        var style = OrbStyle.mercury
 
         init(motion: OrbMotion, model: PillModel) {
             self.motion = motion
@@ -254,7 +339,8 @@ private struct LiveOrb: NSViewRepresentable {
 
         func draw(in view: MTKView) {
             motion.step(toward: model.voice, at: Date(), thinking: thinking, alert: alert)
-            MercuryRenderer.shared?.draw(in: view, flow: motion.flow, energy: motion.energy, swell: motion.swell, alert: motion.alert)
+            let frame = OrbFrame(flow: motion.flow, energy: motion.energy, swell: motion.swell, alert: motion.alert, calm: motion.calm)
+            MercuryRenderer.shared?.draw(in: view, frame, style: style)
         }
     }
 }

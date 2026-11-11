@@ -24,6 +24,7 @@ never leaves the machine.
   formats lists. Uses Apple's on-device model; optionally your own Anthropic, OpenAI or Groq key (text only).
 - **Tone per app.** Formal in Mail, casual in Messages, verbatim in terminals and editors.
 - **Dictionary and snippets.** Teach it names and jargon; say "my email" and get the address.
+- **Two orbs.** Mercury, liquid chrome that slides into a pill, or Halftone, a globe of dots with its status underneath.
 - **History and stats.** Searchable, stored as plain JSON on your Mac, with a retention setting.
 
 ## Light by design
