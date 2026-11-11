@@ -236,8 +236,12 @@ struct SetupView: View {
                         }
                     }
                     RowDivider().padding(.leading, 50)
-                    step(done: axOK, title: "Accessibility", detail: "So Murmur can notice the dictation key and type the result into the app you're using.") {
-                        Button("Grant Access") { Permissions.promptAccessibility() }
+                    step(done: axOK, title: "Accessibility", detail: "So Murmur can notice the dictation key and type the result. Switch Murmur on in the list that opens.") {
+                        Button("Grant Access") {
+                            // macOS shows its own prompt only once, so always open the list as well.
+                            Permissions.promptAccessibility()
+                            Permissions.openSettings("Privacy_Accessibility")
+                        }
                     }
                     RowDivider().padding(.leading, 50)
                     step(done: installed, title: "Speech model",

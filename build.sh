@@ -47,7 +47,15 @@ done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$TMP"
 
-# Ad-hoc signature. With a Developer ID, set SIGN_ID to keep permissions across rebuilds.
+# Sign with a stable identity when there is one, so macOS keeps the app's permissions across
+# rebuilds. macOS 27 ignores Accessibility grants for ad-hoc signed apps entirely.
+# Run scripts/make-signing-cert.sh once to create a local identity, or set SIGN_ID yourself.
+if [ -z "${SIGN_ID:-}" ] && security find-certificate -c "Murmur Local Signing" >/dev/null 2>&1; then
+    SIGN_ID="Murmur Local Signing"
+fi
+if [ -z "${SIGN_ID:-}" ]; then
+    echo "warning: ad-hoc signing. Run scripts/make-signing-cert.sh first, or the Fn key and pasting may not work."
+fi
 codesign --force --options runtime --entitlements Resources/Murmur.entitlements --sign "${SIGN_ID:--}" "$APP"
 
 echo "Built $APP ($(du -sh "$APP" | cut -f1))"

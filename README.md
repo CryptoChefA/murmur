@@ -45,6 +45,7 @@ turned on; without it Murmur still transcribes and applies its rule-based cleanu
 ```bash
 brew install cmake
 git clone https://github.com/YOUR_NAME/murmur && cd murmur
+./scripts/make-signing-cert.sh
 ./build.sh --install
 ```
 
@@ -55,8 +56,21 @@ Open Murmur from Applications. Setup asks for two permissions and downloads the 
 
 If you use Fn, set *System Settings › Keyboard › Press 🌐 key to* **Do Nothing**.
 
-Builds are ad-hoc signed, so macOS treats each rebuild as a new app and asks for the permissions again.
-Set `SIGN_ID` to a signing identity when running `build.sh` to avoid that.
+### Signing
+
+macOS ties permissions to an app's signature, and macOS 27 does not honour Accessibility for ad-hoc signed
+apps at all. Create a local signing identity once, before building:
+
+```bash
+./scripts/make-signing-cert.sh
+```
+
+It adds a self-signed certificate ("Murmur Local Signing") to your login keychain; `build.sh` uses it
+automatically, and your permissions then survive rebuilds. To use your own identity instead, set `SIGN_ID`.
+
+### Scripting
+
+`Murmur --toggle` starts or finishes a dictation in the running app, for launchers and shortcuts.
 
 ## Privacy
 
