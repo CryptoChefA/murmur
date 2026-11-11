@@ -314,7 +314,7 @@ final class Dictation {
         store.add(HistoryEntry(text: text, raw: raw, app: app?.localizedName ?? "", bundleID: app?.bundleIdentifier ?? "",
                                duration: seconds, cleanup: engine))
         switch outcome {
-        case .pasted: notice("", good: true, seconds: 0.7)
+        case .pasted: notice("", good: true, seconds: 0.35)
         case .copiedOnly: notice("Copied — press ⌘V to paste", good: true, seconds: 2.5)
         }
     }

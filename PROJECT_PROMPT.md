@@ -82,7 +82,7 @@ typed into.
   level. Holding the key shows the orb alone (release is "done", Esc is
   "cancel"); hands-free adds a small cancel (✕) and stop (■) beside it.
 - Thinking: the ripple slows to a shimmer while transcribing.
-- Done: a brief check on the orb, then it fades. Messages show as one short
+- Done: the orb settles and fades; the text arriving is the confirmation. Messages show as one short
   line in a dark capsule ("No microphone access", "Copied — paste with ⌘V").
 - Drawn in plain SwiftUI, no shader files. Animation stops completely when
   the orb is hidden.

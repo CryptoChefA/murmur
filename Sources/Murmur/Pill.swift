@@ -105,11 +105,8 @@ struct PillView: View {
             orb(thinking: true)
         case .notice(let message, let good):
             if message.isEmpty {
+                // Success needs no badge: the text appearing is the confirmation. The orb just settles and fades.
                 orb(thinking: true)
-                    .overlay(Image(systemName: "checkmark")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.5), radius: 3))
             } else {
                 HStack(spacing: 7) {
                     Image(systemName: good ? "checkmark.circle.fill" : "exclamationmark.circle")
