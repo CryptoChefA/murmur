@@ -20,6 +20,7 @@ enum Prefs {
             Key.removeFillers: true,
             Key.retentionDays: 0,
             Key.micUID: "",
+            Key.streaming: true,
         ])
     }
 
@@ -37,6 +38,8 @@ enum Prefs {
         /// 0 keeps history forever, -1 keeps none, otherwise days.
         static let retentionDays = "retentionDays"
         static let micUID = "micUID"
+        /// Transcribe finished phrases while the user is still speaking.
+        static let streaming = "streaming"
         static let didOnboard = "didOnboard"
     }
 
@@ -50,6 +53,7 @@ enum Prefs {
     static var spokenCommands: Bool { defaults.bool(forKey: Key.spokenCommands) }
     static var removeFillers: Bool { defaults.bool(forKey: Key.removeFillers) }
     static var retentionDays: Int { defaults.integer(forKey: Key.retentionDays) }
+    static var streaming: Bool { defaults.bool(forKey: Key.streaming) }
     static var micUID: String { defaults.string(forKey: Key.micUID) ?? "" }
 
     /// English-only models can't be asked for anything else.

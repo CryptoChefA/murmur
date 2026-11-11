@@ -52,6 +52,15 @@ public enum TextRules {
         return known.contains(n) && s.count < 40
     }
 
+    /// True when the text is the same passage twice over, which is how Whisper fails when its
+    /// audio window is cut too close.
+    public static func isDoubled(_ s: String) -> Bool {
+        let tokens = normalise(s).split(separator: " ")
+        guard tokens.count >= 2, tokens.count % 2 == 0 else { return false }
+        let half = tokens.count / 2
+        return Array(tokens[..<half]) == Array(tokens[half...])
+    }
+
     public static func removeFillers(_ s: String) -> String {
         // The filler, plus the comma or pause that came with it.
         var t = replace(s, #"(?<![\p{L}\p{N}'])(?:u+m+|u+h+m*|e+r+m+|h+m+)(?![\p{L}\p{N}'])[,…]*\s*"#, "")
@@ -108,7 +117,7 @@ public enum TextRules {
 
     // MARK: - Helpers
 
-    static func normalise(_ s: String) -> String {
+    public static func normalise(_ s: String) -> String {
         var flat = ""
         for scalar in s.lowercased().unicodeScalars {
             if CharacterSet.alphanumerics.contains(scalar) {

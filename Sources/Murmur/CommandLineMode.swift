@@ -25,6 +25,8 @@ enum CommandLineMode {
         let repeats = Int(value("--repeat") ?? "1") ?? 1
         let cleanup = value("--cleanup").flatMap(CleanupLevel.init(rawValue:))
 
+        if let margin = value("--ctx-margin").flatMap(Int.init) { WhisperEngine.contextMargin = margin }
+        if let floor = value("--ctx-floor").flatMap(Int.init) { WhisperEngine.contextFloor = floor }
         let done = DispatchSemaphore(value: 0)
         Task.detached {
             do {
@@ -33,12 +35,39 @@ enum CommandLineMode {
                 if let cleanup { Cleanup.prewarm(level: cleanup, tone: .neutral, vocabulary: [], engine: .onDevice) }
                 for run in 1...repeats {
                     let start = Date()
-                    let raw = try await WhisperEngine.shared.transcribe(samples: samples, modelPath: model, language: language, prompt: prompt)
+                    var raw = ""
+                    if args.contains("--chunked") {
+                        // Cut at pauses exactly as the live recorder would, and report what is left at release.
+                        var detector = PauseDetector(), cuts: [Int] = [], offset = 0
+                        while offset < samples.count {
+                            let end = min(offset + 683, samples.count)
+                            let level = samples[offset..<end].withUnsafeBufferPointer { PauseDetector.level(of: $0) }
+                            if let cut = detector.feed(level: level, count: end - offset) { cuts.append(cut) }
+                            offset = end
+                        }
+                        var parts: [String] = [], from = 0, lastTook = 0.0
+                        for edge in cuts + [samples.count] where edge > from {
+                            let piece = Array(samples[from..<edge])
+                            from = edge
+                            let context = [prompt, String((parts.last ?? "").suffix(200))].filter { !$0.isEmpty }.joined(separator: " ")
+                            let pieceStart = Date()
+                            let text = try await WhisperEngine.shared.transcribe(samples: piece, modelPath: model, language: language, prompt: context)
+                            lastTook = Date().timeIntervalSince(pieceStart)
+                            FileHandle.standardError.write(String(format: "  phrase %.1fs in %.2fs: %@\n", Double(piece.count) / 16_000, lastTook, text).data(using: .utf8)!)
+                            if !text.isEmpty { parts.append(text) }
+                        }
+                        raw = parts.joined(separator: " ")
+                        FileHandle.standardError.write(String(format: "%d phrases; work left at release: %.2fs\n", parts.count, lastTook).data(using: .utf8)!)
+                    } else {
+                        raw = try await WhisperEngine.shared.transcribe(samples: samples, modelPath: model, language: language, prompt: prompt)
+                    }
                     let took = Date().timeIntervalSince(start)
                     var text = TextRules.process(raw, replacements: [], snippets: [])
                     FileHandle.standardError.write(String(format: "run %d: %.2fs audio in %.2fs\n", run, seconds, took).data(using: .utf8)!)
                     if run == repeats {
-                        if let cleanup {
+                        if let cleanup, !CleanupPrompt.needsModel(raw: raw, ruled: text, level: cleanup, tone: .neutral) {
+                            FileHandle.standardError.write("cleanup skipped: already clean\n".data(using: .utf8)!)
+                        } else if let cleanup {
                             if let problem = Cleanup.onDeviceProblem { FileHandle.standardError.write("on-device model: \(problem)\n".data(using: .utf8)!) }
                             let cleanStart = Date()
                             let result = await Cleanup.run(text, level: cleanup, tone: .neutral, vocabulary: [], engine: .onDevice)

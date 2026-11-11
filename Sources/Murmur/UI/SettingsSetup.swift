@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject private var downloader: ModelDownloader
     @AppStorage(Prefs.Key.hotkey) private var hotkey = "fn"
     @AppStorage(Prefs.Key.handsFree) private var handsFree = true
+    @AppStorage(Prefs.Key.streaming) private var streaming = true
     @AppStorage(Prefs.Key.micUID) private var micUID = ""
     @AppStorage(Prefs.Key.language) private var language = "en"
     @AppStorage(Prefs.Key.sounds) private var sounds = true
@@ -35,6 +36,10 @@ struct SettingsView: View {
                     RowDivider()
                     SettingRow(title: "Hands-free", detail: "Double-tap the key to keep listening; tap once more to finish.") {
                         Toggle("", isOn: $handsFree).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    RowDivider()
+                    SettingRow(title: "Transcribe while speaking", detail: "Starts on each phrase when you pause, so long dictations appear sooner. Uses a little more power while you talk.") {
+                        Toggle("", isOn: $streaming).labelsHidden().toggleStyle(.switch).controlSize(.small)
                     }
                     RowDivider()
                     SettingRow(title: "Microphone") {

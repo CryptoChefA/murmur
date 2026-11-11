@@ -31,8 +31,13 @@ One native process. No Python, no ffmpeg, no local server, no Electron.
 | App bundle | 7.6 MB |
 | Idle memory | 11 MB |
 | Idle CPU / wake-ups | 0.0 % / 0 per second |
-| 9 s of speech → text (model warm) | about 1.4 s |
-| On-device cleanup | about 1 s |
+| 2 s sentence → text (model warm) | about 0.5 s |
+| 9 s of speech → text | about 0.8 s |
+| On-device cleanup, when needed | about 1 s |
+
+Three things keep it quick: Whisper's audio window is sized to what you actually said instead of a fixed
+30 seconds; the cleanup model is skipped when the transcript is already clean; and during long dictations each
+phrase is transcribed at the pause after it, so only the last one is left when you let go.
 
 The speech model is loaded when you press the key and released after five idle minutes
 (configurable), so it costs memory only while you're dictating.

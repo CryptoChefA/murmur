@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreAudio
+import MurmurCore
 
 /// Captures the microphone as 16 kHz mono floats. A fresh engine is created for each
 /// recording and torn down afterwards, so the mic indicator is only on while dictating.
@@ -16,6 +17,9 @@ final class Recorder {
 
     /// Called on the main queue with a 0...1 level, roughly 20 times a second.
     var onLevel: ((Float) -> Void)?
+    /// Called on the main queue when the speaker pauses, with the sample index to cut at.
+    var onPause: ((Int) -> Void)?
+    private var detector = PauseDetector()
 
     private var engine: AVAudioEngine?
     private var converter: AVAudioConverter?
@@ -40,7 +44,7 @@ final class Recorder {
         guard format.sampleRate > 0, format.channelCount > 0,
               let converter = AVAudioConverter(from: format, to: AudioFormat.whisper) else { throw Failure.noInput }
         self.converter = converter
-        lock.lock(); samples.removeAll(keepingCapacity: true); samples.reserveCapacity(16_000 * 30); peak = 0; lock.unlock()
+        lock.lock(); samples.removeAll(keepingCapacity: true); samples.reserveCapacity(16_000 * 30); peak = 0; detector = PauseDetector(); lock.unlock()
 
         let ratio = 16_000 / format.sampleRate
         input.installTap(onBus: 0, bufferSize: 2_048, format: format) { [weak self] buffer, _ in
@@ -63,6 +67,13 @@ final class Recorder {
         return result
     }
 
+    /// A copy of part of the recording so far. Safe to call while recording.
+    func slice(_ range: Range<Int>) -> [Float] {
+        lock.lock(); defer { lock.unlock() }
+        let clamped = max(0, range.lowerBound)..<min(samples.count, range.upperBound)
+        return clamped.isEmpty ? [] : Array(samples[clamped])
+    }
+
     private func consume(_ buffer: AVAudioPCMBuffer, ratio: Double) {
         guard let converter else { return }
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 64
@@ -77,19 +88,18 @@ final class Recorder {
         guard error == nil, let channel = out.floatChannelData?[0], out.frameLength > 0 else { return }
         let chunk = UnsafeBufferPointer(start: channel, count: Int(out.frameLength))
 
-        var sum: Float = 0
-        for v in chunk { sum += v * v }
-        let rms = (sum / Float(chunk.count)).squareRoot()
-        // Speech sits around -40...-10 dBFS; map that range onto 0...1.
-        let db = 20 * log10(max(rms, 0.000_01))
-        let level = max(0, min(1, (db + 50) / 40))
+        let level = PauseDetector.level(of: chunk)
 
         lock.lock()
         samples.append(contentsOf: chunk)
         peak = max(peak, level)
+        let cut = detector.feed(level: level, count: chunk.count)
         lock.unlock()
 
-        DispatchQueue.main.async { [weak self] in self?.onLevel?(level) }
+        DispatchQueue.main.async { [weak self] in
+            self?.onLevel?(level)
+            if let cut { self?.onPause?(cut) }
+        }
     }
 }
 

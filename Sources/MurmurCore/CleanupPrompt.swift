@@ -33,6 +33,43 @@ public enum CleanupPrompt {
         return lines.joined(separator: "\n")
     }
 
+    /// Whether the language model has anything to do. Most short sentences come out of Whisper
+    /// already punctuated and correct; sending those to a model only adds a second of waiting.
+    /// `raw` is Whisper's output, `ruled` the same text after the rule-based pass.
+    public static func needsModel(raw: String, ruled: String, level: CleanupLevel, tone: Tone) -> Bool {
+        if level == .off || tone == .verbatim { return false }
+        // A tone other than neutral is a rewrite, which only the model can do.
+        if tone != .neutral { return true }
+
+        let words = TextRules.wordCount(ruled)
+        if words < 3 { return false }
+        let text = " " + TextRules.normalise(ruled) + " "
+
+        // Unpunctuated or uncapitalised output means Whisper struggled; let the model repair it.
+        if let first = ruled.first, first.isLetter, first.isLowercase { return true }
+        if words >= 8, ruled.rangeOfCharacter(from: CharacterSet(charactersIn: ".?!,")) == nil { return true }
+        if words >= 6, let last = ruled.last, !".?!:\"”)".contains(last) { return true }
+
+        // A word said twice in a row is a stutter.
+        let tokens = text.split(separator: " ")
+        for i in tokens.indices.dropFirst() where tokens[i] == tokens[i - 1] && tokens[i].count > 1 { return true }
+
+        // Fillers the rules leave alone.
+        for cue in [" you know ", " i mean ", " kind of ", " sort of ", " like like "] where text.contains(cue) { return true }
+        if level == .light { return false }
+
+        // Polished also rewrites self-corrections, lists and long rambles.
+        if TextRules.normalise(raw) != TextRules.normalise(ruled) { return true }   // fillers were present: disfluent speech
+        for cue in [" no wait ", " wait no ", " scratch that ", " actually ", " or rather ", " make that ", " sorry ",
+                    " let me rephrase ", " correction ", " firstly ", " secondly ",
+                    " number one ", " number two ", " bullet ", " list ", " next item "] where text.contains(cue) { return true }
+        if TextRules.replace(ruled, #"(?:^|[,.;]\s*)no,"#, "") != ruled { return true }
+        // "Second Tuesday" is not a list; "first ... second ..." is.
+        if text.contains(" first "), text.contains(" second ") || text.contains(" then ") || text.contains(" next ") { return true }
+        // Long dictation benefits from paragraphing.
+        return words > 120
+    }
+
     public static func userMessage(_ transcript: String) -> String {
         "<transcript>\n\(transcript)\n</transcript>"
     }

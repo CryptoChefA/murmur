@@ -78,6 +78,55 @@ check("instructions mention vocabulary",
       CleanupPrompt.instructions(level: .polished, tone: .formal, vocabulary: ["Kubernetes"]).contains("Kubernetes"))
 check("light has no list rule", !CleanupPrompt.instructions(level: .light, tone: .neutral, vocabulary: []).contains("list"))
 
+check("doubled text detected", TextRules.isDoubled("Hello world. Hello world."))
+check("normal text not doubled", !TextRules.isDoubled("Hello world. Hello there."))
+check("single word not doubled", !TextRules.isDoubled("Hello."))
+
+// MARK: Skipping the model
+
+func needs(_ raw: String, level: CleanupLevel = .polished, tone: Tone = .neutral) -> Bool {
+    CleanupPrompt.needsModel(raw: raw, ruled: TextRules.process(raw, replacements: [], snippets: []), level: level, tone: tone)
+}
+check("clean sentence skips", !needs("Can you send me the report by Thursday?"))
+check("clean two sentences skip", !needs("I'll be there at six. Save me a seat."))
+check("fillers need polish", needs("Um, can you send me the report by Thursday?"))
+check("fillers fine for light", !needs("Um, can you send me the report by Thursday?", level: .light))
+check("self-correction needs model", needs("Let's meet at five, no wait, six on Friday."))
+check("bare no-comma correction", needs("Let's meet at five. No, six on Friday."))
+check("list needs model", needs("Shopping list. First, oat milk. Second, avocados."))
+check("stutter needs model", needs("Bring the the slides to the meeting.", level: .light))
+check("unpunctuated needs model", needs("so can you send me the report by thursday please", level: .light))
+check("missing end punctuation needs model", needs("Can you send me the report by Thursday", level: .light))
+check("formal always needs model", needs("See you at six.", tone: .formal))
+check("verbatim never", !needs("um the the thing", tone: .verbatim))
+check("off never", !needs("um the the thing", level: .off))
+check("two words skip", !needs("Sounds good."))
+check("long ramble needs polish", needs(Array(repeating: "This is a clean sentence.", count: 30).joined(separator: " ")))
+check("medium clean passage skips", !needs("I wanted to follow up on the launch plan. Marketing would like it to go out on the second Tuesday of next month. Let me know if that works."))
+check("actual word 'like' alone is fine", !needs("I like the new design a lot."))
+
+// MARK: Pause detection
+
+func runDetector(_ pattern: [(Float, Double)]) -> [Int] {
+    var detector = PauseDetector(), cuts: [Int] = []
+    let block = 683   // one microphone buffer at 16 kHz
+    for (level, seconds) in pattern {
+        for _ in 0..<Int(seconds * 16_000 / Double(block)) {
+            if let cut = detector.feed(level: level, count: block) { cuts.append(cut) }
+        }
+    }
+    return cuts
+}
+let twoPhrases = runDetector([(0.2, 0.3), (0.6, 5), (0.2, 0.9), (0.6, 5), (0.2, 0.9), (0.6, 2)])
+check("two pauses found", twoPhrases.count == 2)
+check("first cut inside first pause", twoPhrases.first.map { $0 > Int(5.3 * 16_000) && $0 < Int(6.2 * 16_000) } ?? false)
+let shortPhrases = runDetector([(0.6, 2), (0.2, 0.9), (0.6, 1.5), (0.2, 0.9), (0.6, 1)])
+check("no cut before four seconds", shortPhrases.allSatisfy { $0 > 4 * 16_000 } && shortPhrases.count == 1)
+check("brief dips are not pauses", runDetector([(0.6, 5), (0.2, 0.2), (0.6, 5)]).isEmpty)
+check("steady noise never cuts", runDetector([(0.4, 20)]).isEmpty)
+check("one cut per pause", runDetector([(0.6, 5), (0.2, 4), (0.6, 1)]).count == 1)
+check("noisy room still finds pause", runDetector([(0.35, 0.3), (0.7, 6), (0.4, 0.8), (0.7, 3)]).count == 1)
+
 // MARK: Stats
 
 var cal = Calendar(identifier: .gregorian)

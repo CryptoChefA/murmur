@@ -47,6 +47,10 @@ final class Dictation {
     private var noticeTimeout: DispatchWorkItem?
     private var target: NSRunningApplication?
     private var job: Task<Void, Never>?
+    /// Phrases already handed to Whisper during this recording, in order.
+    private var phraseTasks: [Task<String, Never>] = []
+    private var phraseStart = 0
+    private var releasedAt = Date()
 
     var isRecording: Bool { state == .holding || state == .armed || state == .handsFree }
     var isBusy: Bool { state != .idle }
@@ -57,6 +61,7 @@ final class Dictation {
             guard let self, self.isRecording else { return }
             self.pill.push(level)
         }
+        recorder.onPause = { [weak self] cut in self?.phraseEnded(at: cut) }
         hotkey.onDown = { [weak self] in self?.keyDown() }
         hotkey.onUp = { [weak self] in self?.keyUp() }
         hotkey.onEscape = { [weak self] in self?.cancel() }
@@ -134,6 +139,8 @@ final class Dictation {
             return
         }
         noticeTimeout?.cancel()
+        phraseTasks = []
+        phraseStart = 0
         state = handsFree ? .handsFree : .holding
         pill.resetLevels()
         pill.started = Date()
@@ -155,9 +162,31 @@ final class Dictation {
         DispatchQueue.main.asyncAfter(deadline: .now() + 600, execute: work)
     }
 
+    /// The speaker paused: transcribe what they've said so far while they carry on.
+    private func phraseEnded(at cut: Int) {
+        guard isRecording, Prefs.streaming, cut > phraseStart else { return }
+        let samples = recorder.slice(phraseStart..<cut)
+        phraseStart = cut
+        if !samples.isEmpty { phraseTasks.append(transcribePhrase(samples, after: phraseTasks.last)) }
+    }
+
+    private func transcribePhrase(_ samples: [Float], after previous: Task<String, Never>?) -> Task<String, Never> {
+        let glossary = TextRules.vocabularyPrompt(store.dictionary)
+        let model = ModelCatalog.path(for: Prefs.modelID), language = Prefs.language
+        return Task {
+            // The end of the previous phrase keeps spelling and punctuation consistent across the cut.
+            let before = await previous?.value ?? ""
+            let prompt = [glossary, String(before.suffix(200))].filter { !$0.isEmpty }.joined(separator: " ")
+            return (try? await WhisperEngine.shared.transcribe(samples: samples, modelPath: model,
+                                                               language: language, prompt: prompt)) ?? ""
+        }
+    }
+
     func cancel(silently: Bool = false) {
         armedTimeout?.cancel(); limit?.cancel()
         job?.cancel(); job = nil
+        phraseTasks.forEach { $0.cancel() }
+        phraseTasks = []
         if recorder.isRecording { _ = recorder.stop() }
         hotkey.watchEscape(false)
         let wasBusy = state != .idle
@@ -180,6 +209,7 @@ final class Dictation {
         if Prefs.defaults.bool(forKey: "debugKeepAudio") {
             AudioFileLoader.write(captured.samples, to: Paths.support.appendingPathComponent("last-recording.wav"))
         }
+        releasedAt = Date()
         state = .working
         pill.phase = .thinking
         if Prefs.sounds { NSSound(named: "Pop")?.play() }
@@ -190,11 +220,31 @@ final class Dictation {
         let replacements = store.dictionary, snippets = store.snippets, vocabulary = store.vocabulary
         let quiet = captured.peak < 0.3
 
+        // Whatever was said after the last pause still needs transcribing.
+        var pending = phraseTasks
+        phraseTasks = []
+        let earlier = pending.count
+        let tail = Array(captured.samples[min(phraseStart, captured.samples.count)...])
+        let tailIsSpeech = tail.count >= 4_800 && tail.contains { abs($0) > 0.02 }
+        if earlier > 0, tailIsSpeech { pending.append(transcribePhrase(tail, after: pending.last)) }
+        let phrases = pending
+        let level = Prefs.cleanupLevel
+
         job = Task { [weak self] in
             do {
-                let raw = try await WhisperEngine.shared.transcribe(
-                    samples: captured.samples, modelPath: ModelCatalog.path(for: Prefs.modelID),
-                    language: Prefs.language, prompt: TextRules.vocabularyPrompt(replacements))
+                let raw: String
+                if phrases.isEmpty {
+                    raw = try await WhisperEngine.shared.transcribe(
+                        samples: captured.samples, modelPath: ModelCatalog.path(for: Prefs.modelID),
+                        language: Prefs.language, prompt: TextRules.vocabularyPrompt(replacements))
+                } else {
+                    var parts: [String] = []
+                    for phrase in phrases {
+                        let text = await phrase.value
+                        if !text.isEmpty { parts.append(text) }
+                    }
+                    raw = parts.joined(separator: " ")
+                }
                 if Task.isCancelled { return }
 
                 let ruled = TextRules.process(raw, replacements: replacements, snippets: snippets,
@@ -204,8 +254,14 @@ final class Dictation {
                     await MainActor.run { [weak self] in self?.complete(nil, raw: raw, app: app, seconds: seconds, engine: "none") }
                     return
                 }
-                let cleaned = await Cleanup.run(ruled, level: Prefs.cleanupLevel, tone: tone,
-                                                vocabulary: vocabulary, engine: Prefs.cleanupEngine)
+                // Already clean? Paste now rather than wait a second for the model to agree.
+                let cleaned: Cleanup.Result
+                if CleanupPrompt.needsModel(raw: raw, ruled: ruled, level: level, tone: tone) {
+                    cleaned = await Cleanup.run(ruled, level: level, tone: tone, vocabulary: vocabulary, engine: Prefs.cleanupEngine)
+                } else {
+                    cleaned = Cleanup.Result(text: ruled, engine: "none")
+                }
+                self?.logTiming(seconds: seconds, phrases: max(phrases.count, 1), early: earlier, engine: cleaned.engine)
                 if Task.isCancelled { return }
                 // The model may have re-spelled a dictionary word; apply replacements once more.
                 let final = cleaned.engine == "none" ? cleaned.text : TextRules.applyReplacements(cleaned.text, replacements)
@@ -218,6 +274,16 @@ final class Dictation {
                 }
             }
         }
+    }
+
+    /// With `debugKeepAudio` set, appends how long release-to-text took.
+    private func logTiming(seconds: Double, phrases: Int, early: Int, engine: String) {
+        guard Prefs.defaults.bool(forKey: "debugKeepAudio") else { return }
+        let line = String(format: "audio=%.1fs phrases=%d early=%d cleanup=%@ release-to-text=%.2fs\n",
+                          seconds, phrases, early, engine, Date().timeIntervalSince(releasedAt))
+        let url = Paths.support.appendingPathComponent("timing-log.txt")
+        let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        try? (existing + line).write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func complete(_ text: String?, raw: String, app: NSRunningApplication?, seconds: Double, engine: String) {

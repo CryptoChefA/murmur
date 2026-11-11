@@ -1,5 +1,6 @@
 import Foundation
 import CWhisper
+import MurmurCore
 
 /// whisper.cpp behind one serial queue. The model is loaded on first use and released
 /// after an idle period, so nothing is held in memory while Murmur sits in the menu bar.
@@ -26,6 +27,11 @@ final class WhisperEngine: @unchecked Sendable {
     var idleMinutes: Double = 5
 
     private(set) var isLoaded = false
+
+    /// Extra encoder frames beyond the audio's own length (50 frames = 1 s). -1 uses the full window.
+    /// 200 / 512 measured as the smallest setting with no accuracy change; tighter ones repeat text.
+    static var contextMargin = 200
+    static var contextFloor = 512
 
     private init() {
         whisper_log_set({ _, _, _ in }, nil)
@@ -109,6 +115,28 @@ final class WhisperEngine: @unchecked Sendable {
         params.translate = false
         params.detect_language = false
         params.temperature = 0
+        // Whisper encodes a fixed 30 s window (1500 frames) however short the clip is. Sizing the
+        // window to the audio makes short phrases proportionally quick.
+        var fitted = false
+        if WhisperEngine.contextMargin >= 0 {
+            let frames = Int((Double(samples.count) / 16_000 * 50).rounded(.up)) + WhisperEngine.contextMargin
+            let window = min(1500, max(WhisperEngine.contextFloor, frames))
+            params.audio_ctx = Int32(window)
+            fitted = window < 1500
+        }
+
+        var text = try decode(ctx, params, samples, language, prompt)
+        // A fitted window very occasionally makes Whisper say everything twice. Redo it in full.
+        if fitted, text.isEmpty || TextRules.isDoubled(text) {
+            params.audio_ctx = 0
+            text = try decode(ctx, params, samples, language, prompt)
+        }
+        return text
+    }
+
+    private func decode(_ ctx: OpaquePointer, _ base: whisper_full_params, _ samples: [Float],
+                        _ language: String, _ prompt: String) throws -> String {
+        var params = base
 
         let code: Int32 = language.withCString { lang in
             prompt.withCString { promptPtr in
