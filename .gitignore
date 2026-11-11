@@ -5,3 +5,4 @@ Sources/CWhisper/include/
 .DS_Store
 *.bin
 preview/
+.claude/

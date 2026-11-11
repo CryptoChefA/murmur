@@ -134,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let paste = NSMenuItem(title: "Paste Last Transcript", action: #selector(pasteLast), keyEquivalent: "")
             paste.target = self
             menu.addItem(paste)
-            let header = NSMenuItem(title: "Recent — click to copy", action: nil, keyEquivalent: "")
+            let header = NSMenuItem(title: "Recent (click to copy)", action: nil, keyEquivalent: "")
             header.isEnabled = false
             menu.addItem(header)
             for entry in recent {
@@ -203,7 +203,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func windowWillClose(_ notification: Notification) {
         // Back to a menu-bar-only app with no view tree in memory.
-        Prefs.defaults.set(true, forKey: Prefs.Key.didOnboard)
         window?.contentView = nil
         window = nil
         NSApp.setActivationPolicy(.accessory)

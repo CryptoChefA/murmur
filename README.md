@@ -3,8 +3,12 @@
 Hold a key, talk, let go. Murmur transcribes on your Mac, tidies the result with an
 on-device language model, and types it into whatever app you're using.
 
+**[See it in action at cryptochefa.github.io/murmur](https://cryptochefa.github.io/murmur/)**
+
 Free, open source, and private by default: no account, no telemetry, and your audio
 never leaves the machine.
+
+![A dictation: hold Fn, speak, and the sentence appears in the email draft](docs/demo.gif)
 
 ![Overview](docs/overview-light.png)
 
@@ -88,6 +92,7 @@ identities altogether, use `SIGN_ID=-` (the dictation key and pasting will not w
 .build/release/MurmurCheck                              # text rules, cleanup guard, stats
 .build/release/Murmur --transcribe clip.wav --cleanup polished   # speech path, no mic needed
 .build/release/Murmur --render-screens out/             # every screen as PNG
+.build/release/Murmur --render-demo frames/             # the README animation, frame by frame
 ```
 
 `PROJECT_PROMPT.md` describes the product and its interface in full.

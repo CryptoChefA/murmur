@@ -13,6 +13,11 @@ enum CommandLineMode {
             exit(0)
         }
 
+        if let dir = value("--render-demo") {
+            MainActor.assumeIsolated { DemoRenderer.render(into: URL(fileURLWithPath: dir)) }
+            exit(0)
+        }
+
         if let file = value("--render-icon") {
             MainActor.assumeIsolated { ScreenRenderer.renderIcon(to: URL(fileURLWithPath: file)) }
             exit(0)

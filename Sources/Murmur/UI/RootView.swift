@@ -70,8 +70,21 @@ enum Theme {
 
 struct RootView: View {
     @EnvironmentObject private var nav: Navigation
+    @AppStorage(Prefs.Key.didOnboard) private var didOnboard = false
+    /// Screenshots set this so they do not depend on whether this Mac has been set up.
+    var skipOnboarding = false
 
     var body: some View {
+        Group {
+            if didOnboard || skipOnboarding { main } else { OnboardingView() }
+        }
+        .tint(Theme.accent)
+        .preferredColorScheme(.dark)
+        .frame(minWidth: 780, minHeight: 520)
+        .ignoresSafeArea()
+    }
+
+    private var main: some View {
         HStack(spacing: 0) {
             Sidebar()
                 .frame(width: 204)
@@ -98,10 +111,6 @@ struct RootView: View {
             .background(Theme.window)
         }
         .background(Theme.window)
-        .tint(Theme.accent)
-        .preferredColorScheme(.dark)
-        .frame(minWidth: 780, minHeight: 520)
-        .ignoresSafeArea()
     }
 
     @ViewBuilder private var content: some View {

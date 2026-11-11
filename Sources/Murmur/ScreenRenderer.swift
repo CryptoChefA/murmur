@@ -15,7 +15,7 @@ enum ScreenRenderer {
             for section in AppSection.allCases {
                 let nav = Navigation()
                 nav.section = section
-                let view = RootView()
+                let view = RootView(skipOnboarding: true)
                     .environmentObject(Store.demo())
                     .environmentObject(nav)
                     .environmentObject(ModelDownloader.shared)
@@ -23,9 +23,18 @@ enum ScreenRenderer {
                          to: directory.appendingPathComponent("\(section.rawValue)-\(suffix).png"))
             }
 
+            if suffix == "dark" {
+                for step in 0..<OnboardingView.stepCount {
+                    let view = OnboardingView(step: step).environmentObject(ModelDownloader.shared)
+                        .tint(Theme.accent).preferredColorScheme(.dark).ignoresSafeArea()
+                    snapshot(view, size: NSSize(width: 900, height: 660), appearance: appearance,
+                             to: directory.appendingPathComponent("onboarding-\(step + 1).png"))
+                }
+            }
+
             let phases: [(String, PillModel.Phase)] = [
                 ("listening", .listening(handsFree: false)), ("handsfree", .listening(handsFree: true)),
-                ("thinking", .thinking), ("done", .notice("Copied — press ⌘V to paste", good: true)),
+                ("thinking", .thinking), ("done", .notice("Copied. Press ⌘V to paste", good: true)),
                 ("problem", .notice("Didn't hear anything", good: false)),
             ]
             for (name, phase) in phases {

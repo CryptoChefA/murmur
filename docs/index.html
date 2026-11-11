@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Murmur. Dictation for Mac that stays on your Mac.</title>
+<meta name="description" content="Hold a key, talk, let go. Murmur types what you said into any Mac app. Free, open source, and nothing you say leaves your computer.">
+<meta property="og:title" content="Murmur">
+<meta property="og:description" content="Hold a key, talk, let go. Free dictation for Mac that runs entirely on your computer.">
+<meta property="og:image" content="overview-dark.png">
+<meta name="theme-color" content="#04050b">
+<link rel="icon" href="icon.png">
+<script>if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('pre');</script>
+<style>
+:root {
+  --ink: #04050b;
+  --deep: #0b0d19;
+  --panel: #11142200;
+  --card: #0e1120;
+  --line: rgba(255,255,255,.085);
+  --silver: #cbd2e0;
+  --chrome: #f4f6fb;
+  --dim: #8a91a6;
+  --indigo: #a5b4fc;
+  --ember: #ff9a5c;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--ink); color: var(--silver);
+  font-family: var(--font); font-size: 17px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--indigo); outline-offset: 3px; border-radius: 6px; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+.metal {
+  background: linear-gradient(180deg, #ffffff 0%, #dfe4f2 38%, #9aa3c4 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* Top bar */
+.bar {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(4,5,11,.72); backdrop-filter: saturate(160%) blur(18px); -webkit-backdrop-filter: saturate(160%) blur(18px);
+  border-bottom: 1px solid var(--line);
+}
+.bar .wrap { display: flex; align-items: center; height: 52px; gap: 28px; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 600; color: var(--chrome); text-decoration: none; font-size: 15px; }
+.brand img { width: 22px; height: 22px; border-radius: 6px; }
+.bar nav { margin-left: auto; display: flex; gap: 26px; font-size: 13px; }
+.bar nav a { text-decoration: none; color: var(--dim); }
+.bar nav a:hover { color: var(--chrome); }
+.bar .get { color: var(--ink); background: var(--chrome); padding: 6px 14px; border-radius: 999px; font-weight: 500; }
+.bar .get:hover { color: var(--ink); background: #fff; }
+
+/* Hero */
+.hero { position: relative; text-align: center; padding: 24px 0 70px; min-height: 100vh; }
+.hero::before {
+  content: ""; position: absolute; inset: -20% -10% auto -10%; height: 900px; pointer-events: none;
+  background: radial-gradient(closest-side at 50% 38%, rgba(92,108,190,.26), rgba(92,108,190,.07) 55%, transparent 75%);
+}
+.stage { position: relative; width: min(560px, 80vw, 58vh); aspect-ratio: 1; margin: 0 auto; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.stage.held { cursor: grabbing; }
+.stage img { position: absolute; inset: 0; width: 100%; height: 100%; }
+#orb { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 10; pointer-events: none; }
+/* Light the orb throws on the page around it. */
+#glow { position: fixed; left: 0; top: 0; width: 10px; height: 10px; z-index: 9; pointer-events: none; opacity: 0; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(150,165,255,.42), rgba(120,130,230,.16) 42%, rgba(255,154,92,.05) 66%, transparent 78%); will-change: transform, opacity; }
+/* Film grain and darkened corners. */
+body::before { content: ""; position: fixed; inset: 0; z-index: 8; pointer-events: none; background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.62) 100%); }
+body::after { content: ""; position: fixed; inset: 0; z-index: 15; pointer-events: none; opacity: .07; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+/* The opening: everything waits in the dark while the orb arrives, then the words come up. */
+.reveal { transition: opacity 1.3s ease, transform 1.5s cubic-bezier(.16,.8,.2,1), filter 1.3s ease; }
+.pre .reveal { opacity: 0; transform: translateY(26px) scale(1.03); filter: blur(14px); }
+.pre .bar { opacity: 0; }
+.bar { transition: opacity 1.2s ease 2.6s; }
+h1 .reveal { display: inline-block; }
+h1 .reveal:nth-child(1) { transition-delay: 1.5s; }
+h1 .reveal:nth-child(2) { transition-delay: 2.0s; }
+.lede.reveal { transition-delay: 2.5s; }
+.actions.reveal { transition-delay: 2.8s; }
+.fine.reveal, .status.reveal { transition-delay: 3.1s; }
+
+/* The title card the chrome floods across. */
+.interlude { height: 120vh; display: grid; place-items: center; text-align: center; position: relative; z-index: 12; pointer-events: none; }
+.interlude p { margin: 0; font-size: clamp(40px, 7.4vw, 104px); line-height: 1; letter-spacing: -.045em; font-weight: 700; color: #fff; max-width: 12ch; text-shadow: 0 2px 40px rgba(0,0,10,.55); }
+
+/* Section headings come into focus once, when they arrive. */
+.pre-h h2, .pre-h .sub { opacity: 0; transform: translateY(22px); filter: blur(10px); }
+section h2, section .sub { transition: opacity 1.1s ease, transform 1.2s cubic-bezier(.16,.8,.2,1), filter 1.1s ease; }
+section .sub { transition-delay: .12s; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 40px; }
+.slot { flex: none; position: relative; }
+.slot.pill { width: 280px; height: 108px; }
+.slot.ring { width: 270px; height: 270px; }
+.slot.tile { width: 170px; height: 170px; }
+.slot.dot { width: 34px; height: 34px; margin: 0 0 26px auto; }
+.slot.ball { width: 190px; height: 190px; margin: 0 auto 34px; }
+.slot.ring svg { position: absolute; inset: 0; margin: auto; width: 54px; height: 54px; color: var(--chrome); opacity: .9; }
+
+.status { height: 86px; margin-top: 4px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; }
+.status .hint { font-size: 14px; color: var(--dim); }
+.status .heard { font-size: 14px; color: #6f768c; min-height: 21px; }
+.status .typed { font-size: 21px; color: var(--chrome); font-weight: 500; letter-spacing: -.01em; min-height: 32px; }
+.status .typed .caret { display: inline-block; width: 2px; height: 1em; background: var(--indigo); vertical-align: -0.14em; margin-left: 2px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+h1 { font-size: clamp(52px, 9.4vw, 112px); line-height: .98; letter-spacing: -.045em; font-weight: 700; margin: 18px 0 0; }
+.lede { max-width: 620px; margin: 22px auto 0; font-size: clamp(18px, 2.1vw, 22px); line-height: 1.42; color: #a9b0c4; letter-spacing: -.01em; }
+.actions { margin-top: 30px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.btn { display: inline-block; text-decoration: none; font-size: 16px; font-weight: 500; padding: 12px 22px; border-radius: 999px; }
+.btn.primary { background: linear-gradient(180deg, #ffffff, #cfd6ea); color: #0a0c18; box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 12px 30px rgba(120,135,220,.25); }
+.btn.primary:hover { background: #fff; }
+.btn.quiet { color: var(--chrome); border: 1px solid rgba(255,255,255,.18); }
+.btn.quiet:hover { border-color: rgba(255,255,255,.4); }
+.fine { margin-top: 16px; font-size: 13px; color: #6f768c; }
+.linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--indigo); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Sections */
+section { padding: 130px 0; border-top: 1px solid var(--line); position: relative; }
+section#how { border-top: 0; }
+h2 { font-size: clamp(36px, 5.4vw, 64px); line-height: 1.03; letter-spacing: -.035em; font-weight: 700; margin: 0; max-width: 15ch; }
+.sub { margin: 20px 0 0; max-width: 58ch; font-size: 19px; color: #a9b0c4; }
+
+/* How it works */
+.how { display: grid; grid-template-columns: 1.25fr 1fr; gap: 56px; align-items: center; margin-top: 56px; }
+.film { border-radius: 18px; overflow: hidden; border: 1px solid rgba(255,255,255,.12); box-shadow: 0 40px 90px rgba(0,0,0,.55); background: var(--deep); }
+.film video, .film img { display: block; width: 100%; height: auto; }
+.steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+.steps li { counter-increment: step; padding: 22px 0 22px 54px; position: relative; border-top: 1px solid var(--line); }
+.steps li:first-child { border-top: 0; padding-top: 0; }
+.steps li::before {
+  content: counter(step); position: absolute; left: 0; top: 22px; width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 15px; font-weight: 600; color: var(--chrome);
+  background: radial-gradient(circle at 32% 28%, #5b6388, #161a30 70%); border: 1px solid rgba(255,255,255,.18);
+}
+.steps li:first-child::before { top: 0; }
+.steps h3 { margin: 0 0 4px; font-size: 20px; color: var(--chrome); font-weight: 600; letter-spacing: -.015em; }
+.steps p { margin: 0; color: #a9b0c4; font-size: 16px; }
+kbd { font-family: var(--font); font-size: .86em; padding: 1px 7px; border-radius: 6px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.06); color: var(--chrome); }
+
+/* Numbers */
+.light { display: grid; grid-template-columns: 1fr 1.1fr; gap: 64px; align-items: start; }
+.spec { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.spec th, .spec td { text-align: left; padding: 17px 0; border-bottom: 1px solid var(--line); font-weight: 400; }
+.spec th { color: #a9b0c4; font-size: 16px; }
+.spec td { text-align: right; color: var(--chrome); font-size: 26px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.spec tr:last-child th, .spec tr:last-child td { border-bottom: 0; }
+.note { font-size: 13px; color: #6f768c; margin-top: 14px; }
+
+/* Private */
+.private { background: radial-gradient(80% 120% at 85% 0%, rgba(92,108,190,.16), transparent 60%); }
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-top: 56px; border-top: 1px solid var(--line); }
+.facts div { padding: 26px 28px 6px 0; }
+.facts div + div { padding-left: 28px; border-left: 1px solid var(--line); }
+.facts h3 { margin: 0 0 6px; font-size: 19px; color: var(--chrome); font-weight: 600; letter-spacing: -.015em; }
+.facts p { margin: 0; font-size: 16px; color: #a9b0c4; }
+
+/* Features */
+.grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-top: 56px; }
+.tile {
+  background: linear-gradient(180deg, #111427, #0b0d19); border-radius: 22px; padding: 30px 30px 0; overflow: hidden; position: relative;
+  box-shadow: 0 1px 0 rgba(255,255,255,.10) inset, 0 0 0 1px rgba(255,255,255,.05);
+  display: flex; flex-direction: column;
+}
+.tile h3 { margin: 0 0 8px; font-size: 24px; line-height: 1.12; color: var(--chrome); font-weight: 600; letter-spacing: -.022em; }
+.tile p { margin: 0 0 28px; font-size: 16px; color: #a9b0c4; max-width: 44ch; }
+.tile.wide { grid-column: span 4; }
+.tile.narrow { grid-column: span 2; }
+.tile.half { grid-column: span 3; }
+.tile .shot { margin: auto -1px -1px 0; border-top-left-radius: 12px; border: 1px solid rgba(255,255,255,.12); border-right: 0; border-bottom: 0; overflow: hidden; margin-left: 0; }
+.tile .shot img { display: block; width: 135%; max-width: none; }
+.say { margin: auto 0 30px; font-size: 16px; display: grid; gap: 10px; }
+.say span { display: block; }
+.say .raw { color: #6f768c; }
+.say .out { color: var(--chrome); }
+.apps { margin: auto 0 30px; display: grid; gap: 0; }
+.apps div { display: flex; justify-content: space-between; padding: 11px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.apps div span:last-child { color: var(--indigo); }
+
+/* Install */
+.install { display: grid; grid-template-columns: 1fr 1.15fr; gap: 64px; align-items: start; }
+.term { background: #080a14; border: 1px solid rgba(255,255,255,.12); border-radius: 16px; overflow: hidden; }
+.term .row { display: flex; align-items: center; gap: 14px; padding: 15px 16px 15px 20px; border-top: 1px solid var(--line); }
+.term .row:first-child { border-top: 0; }
+.term code { font-family: var(--mono); font-size: 14px; color: var(--chrome); flex: 1; overflow-x: auto; white-space: nowrap; }
+.term button { font: inherit; font-size: 12.5px; color: var(--dim); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 5px 10px; cursor: pointer; min-width: 62px; }
+.term button:hover { color: var(--chrome); border-color: rgba(255,255,255,.3); }
+.plain { margin: 22px 0 0; padding: 0; list-style: none; font-size: 16px; color: #a9b0c4; }
+.plain li { padding: 9px 0; border-top: 1px solid var(--line); }
+.plain li:first-child { border-top: 0; }
+.plain strong { color: var(--chrome); font-weight: 600; }
+
+footer { border-top: 1px solid var(--line); padding: 34px 0 60px; font-size: 13px; color: #6f768c; }
+footer .wrap { display: flex; gap: 24px; flex-wrap: wrap; justify-content: space-between; }
+footer a { color: var(--dim); }
+
+@media (max-width: 860px) {
+  .bar nav a:not(.get) { display: none; }
+  section { padding: 76px 0; }
+  .how, .light, .install { grid-template-columns: 1fr; gap: 40px; }
+  .slot { display: none; }
+  .interlude { height: 60vh; }
+  .facts { grid-template-columns: 1fr; }
+  .facts div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); }
+  .tile.wide, .tile.narrow, .tile.half { grid-column: span 6; }
+  .spec td { font-size: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .status .typed .caret { animation: none; }
+  .interlude { height: auto; padding: 80px 24px; }
+  body::after { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icon.png" alt="">Murmur</a>
+    <nav aria-label="Sections">
+      <a href="#how">How it works</a>
+      <a href="#light">Size and speed</a>
+      <a href="#private">Privacy</a>
+      <a href="#install">Install</a>
+      <a class="get" href="https://github.com/CryptoChefA/murmur">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div id="glow" aria-hidden="true"></div>
+<canvas id="orb" aria-hidden="true"></canvas>
+<main id="top">
+  <div class="hero">
+    <div class="wrap">
+      <div class="stage" id="stage" role="button" tabindex="0" aria-label="Press and hold to see a sample dictation">
+      </div>
+      <div class="status reveal" aria-live="polite">
+        <div class="hint" id="hint">Press and hold the orb, or hold the space bar.</div>
+        <div class="heard" id="heard"></div>
+        <div class="typed" id="typed"></div>
+      </div>
+
+      <h1><span class="reveal metal">Talk.</span> <span class="reveal metal">It types.</span></h1>
+      <p class="lede reveal">Murmur is a free dictation app for Mac. Hold a key, say what you mean, and let go. The words land in whatever app you're using, tidied up, and nothing you say leaves your computer.</p>
+      <div class="actions reveal">
+        <a class="btn primary" href="#install">Install Murmur</a>
+        <a class="btn quiet" href="#how">See how it works</a>
+      </div>
+      <p class="fine reveal">Free and open source. macOS 14 or later, Apple silicon.
+        <button class="linkish" id="mic" type="button">Let the orb hear my microphone</button></p>
+    </div>
+  </div>
+
+  <div class="interlude" id="interlude"><p>You already know what you want to say.</p></div>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="head">
+        <div>
+          <h2 class="metal">One key. No window to open.</h2>
+          <p class="sub">Murmur lives in the menu bar and stays out of the way until you hold its key. It works in Mail, Messages, Notes, your browser, your editor, a terminal. Anywhere you can type.</p>
+        </div>
+        <div class="slot pill" data-shape="pill"></div>
+      </div>
+      <div class="how">
+        <div class="film">
+          <video src="demo.mp4" poster="" autoplay loop muted playsinline aria-label="A dictation: holding Fn, speaking, and the sentence appearing in an email draft"></video>
+        </div>
+        <ol class="steps">
+          <li><h3>Hold <kbd>fn</kbd> and talk</h3><p>The orb appears and moves with your voice, so you know it's listening. Double-tap instead if you'd rather not hold the key.</p></li>
+          <li><h3>Let go</h3><p>The speech model runs on your Mac. A short sentence takes about half a second.</p></li>
+          <li><h3>Read what you meant</h3><p>The ums are gone and so are the false starts. If you corrected yourself halfway through, you get the correction.</p></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section id="light">
+    <div class="wrap light">
+      <div>
+        <h2 class="metal">Small enough to forget it's running.</h2>
+        <p class="sub">One native app. No Python, no Electron, no server humming in the background. The speech model loads when you press the key and is released a few minutes after you stop, so it only costs memory while you're dictating.</p>
+      </div>
+      <div>
+        <div class="slot dot" data-shape="ball"></div>
+        <table class="spec">
+          <tr><th scope="row">The whole app</th><td>7.7 MB</td></tr>
+          <tr><th scope="row">Memory while idle</th><td>11 MB</td></tr>
+          <tr><th scope="row">Processor while idle</th><td>0.0%</td></tr>
+          <tr><th scope="row">A two-second sentence, typed in</th><td>about 0.5 s</td></tr>
+          <tr><th scope="row">Nine seconds of speech, typed in</th><td>about 0.8 s</td></tr>
+        </table>
+        <p class="note">Measured on an M4 MacBook running macOS 27, with the model already loaded. The model itself is a separate 574 MB download.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="private" class="private">
+    <div class="wrap">
+      <div class="head">
+        <div>
+          <h2 class="metal">Your voice stays on your Mac.</h2>
+          <p class="sub">Transcription and cleanup both run on your computer. There's no account to make and nothing is measured or reported back.</p>
+        </div>
+        <div class="slot ring" data-shape="ring">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.4"/><path d="M8.2 10.5V8a3.8 3.8 0 0 1 7.6 0v2.5"/></svg>
+        </div>
+      </div>
+      <div class="facts">
+        <div><h3>Audio is never saved</h3><p>It's held in memory while you speak and thrown away once it has been transcribed.</p></div>
+        <div><h3>Two reasons to go online</h3><p>Downloading the speech model once, and cleanup through your own API key if you turn that on. That sends text, never audio.</p></div>
+        <div><h3>History is a file you own</h3><p>Plain JSON in your Library folder. Keep it forever, keep it a week, or keep none of it.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="does">
+    <div class="wrap">
+      <div class="head">
+        <h2 class="metal">It writes the way you'd have typed it.</h2>
+        <div class="slot tile" data-shape="tile"></div>
+      </div>
+      <div class="grid">
+        <div class="tile half">
+          <h3>Cleans up as it goes</h3>
+          <p>Apple's on-device model fixes punctuation, drops filler, and keeps your corrections. If the sentence was already clean, it's left alone.</p>
+          <div class="say">
+            <span class="raw">um so let's meet at five no six on friday and uh bring the the slides</span>
+            <span class="out">Let's meet at six on Friday, and bring the slides.</span>
+          </div>
+        </div>
+        <div class="tile half">
+          <h3>A different tone for each app</h3>
+          <p>Set it once. Murmur checks which app is in front and writes to suit it.</p>
+          <div class="apps">
+            <div><span>Mail</span><span>Formal</span></div>
+            <div><span>Messages</span><span>Casual</span></div>
+            <div><span>Terminal</span><span>Word for word</span></div>
+          </div>
+        </div>
+        <div class="tile wide">
+          <h3>See how much you've said</h3>
+          <p>Words today, your speaking pace, and every dictation you've made, searchable. Copy one back out or paste the last one again.</p>
+          <div class="shot"><img src="overview-dark.png" alt="Murmur's Overview screen: words dictated today and this week, a 14-day chart, and recent dictations" loading="lazy"></div>
+        </div>
+        <div class="tile narrow">
+          <h3>Teach it your words</h3>
+          <p>Add names and jargon to the dictionary so they're spelled right. Make snippets: say "my email" and get the address.</p>
+        </div>
+        <div class="tile narrow">
+          <h3>Hands-free when you need it</h3>
+          <p>Double-tap the key and talk for as long as you like. Long dictations are transcribed phrase by phrase while you're still speaking.</p>
+        </div>
+        <div class="tile narrow">
+          <h3>Your clipboard, left alone</h3>
+          <p>Whatever you had copied is put back after each dictation. Or keep the dictated text there instead. It's one switch.</p>
+        </div>
+        <div class="tile narrow">
+          <h3>Not only English</h3>
+          <p>Pick from 20 languages or let Murmur work out which one you're speaking.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap install">
+      <div>
+        <h2 class="metal">Three lines and you're dictating.</h2>
+        <p class="sub">There isn't a ready-made download yet, so you build Murmur once from its source. It takes a few minutes and needs Apple's command line tools and Homebrew.</p>
+        <ul class="plain">
+          <li><strong>You need</strong> macOS 14 or later on an Apple silicon Mac.</li>
+          <li><strong>On-device cleanup</strong> needs macOS 26 with Apple Intelligence turned on. Without it Murmur still transcribes and tidies with its own rules.</li>
+          <li><strong>Coming next</strong> a download you can just open, and a choice of colours for the orb.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="slot ball" data-shape="ball"></div>
+        <div class="term" aria-label="Install commands">
+          <div class="row"><code>brew install cmake</code><button type="button">Copy</button></div>
+          <div class="row"><code>git clone https://github.com/CryptoChefA/murmur &amp;&amp; cd murmur</code><button type="button">Copy</button></div>
+          <div class="row"><code>./build.sh --install</code><button type="button">Copy</button></div>
+        </div>
+        <p class="note">Then open Murmur from Applications. It asks for the microphone and for Accessibility, which is how it sees the key and types for you, and downloads the speech model.</p>
+        <div class="actions" style="justify-content:flex-start;margin-top:22px">
+          <a class="btn primary" href="https://github.com/CryptoChefA/murmur">Open the project on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Murmur is released under the MIT licence. Speech recognition by <a href="https://github.com/ggml-org/whisper.cpp">whisper.cpp</a> and OpenAI's Whisper model.</span>
+    <span><a href="https://github.com/CryptoChefA/murmur">Source</a> &nbsp; <a href="https://github.com/CryptoChefA/murmur/issues">Report a problem</a></span>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const canvas = document.getElementById('orb');
+  const hint = document.getElementById('hint');
+  const heard = document.getElementById('heard');
+  const typed = document.getElementById('typed');
+  const micButton = document.getElementById('mic');
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const SAID = 'um so can we move the design review to thursday at three no wait four'.split(' ');
+  const TYPED = 'Can we move the design review to Thursday at four?';
+
+  // ---- The orb: liquid chrome, the same pattern the app draws, in GLSL. One canvas covers the
+  // window; the orb is a rounded shape inside it that can stretch into a capsule, flatten into a
+  // tile or open into a ring, so it can travel down the page and become something else on the way.
+  const gl = canvas.getContext('webgl', { premultipliedAlpha: true, antialias: false });
+  let draw = () => {};
+  if (gl) {
+    const vs = 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }';
+    const fs = `
+      precision highp float;
+      uniform vec2 uC, uH, uTilt;
+      uniform float uCorner, uW, uBevel, uR, uFlow, uEnergy, uSwell, uDim;
+      float chrome(float x) {
+        x = fract(x);
+        float rise = smoothstep(0.30, 0.38, x);
+        float fall = 1.0 - smoothstep(0.82, 0.98, x);
+        float body = mix(1.0, 0.34, smoothstep(0.40, 0.90, x));
+        return rise * fall * body;
+      }
+      float shape(vec2 q) {
+        vec2 d = abs(q) - uH + uCorner;
+        float box = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - uCorner;
+        return abs(box + uW) - uW;
+      }
+      void main() {
+        vec2 q = gl_FragCoord.xy - uC;
+        float d = shape(q);
+        float mask = 1.0 - smoothstep(-1.2, 0.4, d);
+        if (mask <= 0.0) { gl_FragColor = vec4(0.0); return; }
+        float h = clamp(-d / uBevel, 0.0, 1.0);
+        float z = sqrt(max(0.0, 1.0 - (1.0 - h) * (1.0 - h)));
+        vec2 g = vec2(shape(q + vec2(1.0, 0.0)) - d, shape(q + vec2(0.0, 1.0)) - d);
+        vec3 normal = normalize(vec3(g * (1.0 - h), z + 0.001));
+        vec2 uv = q / uR;
+        vec2 p = (uv + uTilt * 0.55 * z) / (0.58 + 0.42 * z) * 0.62;
+        float stir = 0.42 + 0.36 * uSwell;
+        for (int i = 1; i <= 4; i++) {
+          float f = float(i);
+          p.x += stir / f * sin(f * 1.7 * p.y + uFlow * (0.60 + 0.17 * f) + 1.7 * f);
+          p.y += stir / f * cos(f * 1.4 * p.x - uFlow * (0.50 + 0.13 * f) + 0.6 * f);
+        }
+        float s = p.x * 0.66 + p.y * 0.48 + 0.07 * uFlow;
+        float spread = 0.012 + 0.028 * uSwell;
+        vec3 band = vec3(chrome(s + spread), chrome(s), chrome(s - spread));
+        vec3 deep = vec3(0.030, 0.040, 0.130);
+        vec3 bright = vec3(0.930, 0.950, 1.000);
+        vec3 colour = deep + (bright - deep) * band;
+        vec3 lamp = normalize(vec3(-0.45 + uTilt.x * 1.1, 0.60 + uTilt.y * 1.1, 0.66));
+        float shine = pow(max(0.0, dot(normal, lamp)), 14.0);
+        colour *= mix(0.38, 1.0, smoothstep(0.0, 0.55, z));
+        colour *= 0.88 + 0.30 * uEnergy;
+        colour += shine * (0.20 + 0.30 * uEnergy);
+        colour *= 1.0 - uDim;
+        gl_FragColor = vec4(colour * mask, mask);
+      }`;
+    const compile = (type, source) => { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); return s; };
+    const program = gl.createProgram();
+    gl.attachShader(program, compile(gl.VERTEX_SHADER, vs));
+    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(program);
+    if (gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      gl.useProgram(program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const at = gl.getAttribLocation(program, 'p');
+      gl.enableVertexAttribArray(at);
+      gl.vertexAttribPointer(at, 2, gl.FLOAT, false, 0, 0);
+      const U = n => gl.getUniformLocation(program, n);
+      const u = { C: U('uC'), H: U('uH'), tilt: U('uTilt'), corner: U('uCorner'), W: U('uW'), bevel: U('uBevel'),
+                  R: U('uR'), flow: U('uFlow'), energy: U('uEnergy'), swell: U('uSwell'), dim: U('uDim') };
+      gl.enable(gl.SCISSOR_TEST);
+      draw = (m, o) => {
+        const k = Math.min(devicePixelRatio || 1, 2);
+        const w = Math.round(canvas.clientWidth * k), h = Math.round(canvas.clientHeight * k);
+        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+        gl.viewport(0, 0, w, h);
+        gl.scissor(0, 0, w, h);
+        gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+        const grow = 1 + 0.08 * m.energy * o.live;
+        const cx = o.x * k, cy = h - o.y * k, hx = o.hx * k * grow, hy = o.hy * k * grow;
+        const x0 = Math.floor(cx - hx - 3), y0 = Math.floor(cy - hy - 3);
+        if (x0 > w || y0 > h || x0 + 2 * hx + 6 < 0 || y0 + 2 * hy + 6 < 0) return;
+        gl.scissor(Math.max(0, x0), Math.max(0, y0), Math.ceil(2 * hx + 6), Math.ceil(2 * hy + 6));
+        gl.uniform2f(u.C, cx, cy); gl.uniform2f(u.H, hx, hy); gl.uniform2f(u.tilt, m.tiltX, m.tiltY);
+        gl.uniform1f(u.corner, Math.min(o.corner * k * grow, Math.min(hx, hy)));
+        gl.uniform1f(u.W, o.w * k * grow); gl.uniform1f(u.bevel, o.bevel * k * grow); gl.uniform1f(u.R, o.r * k * grow);
+        gl.uniform1f(u.dim, 0.58 * o.flood); gl.uniform1f(u.flow, m.flow); gl.uniform1f(u.energy, m.energy); gl.uniform1f(u.swell, m.swell);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      };
+    }
+  }
+  if (!gl) { const img = new Image(); img.src = 'icon.png'; img.alt = ''; stage.append(img); canvas.remove(); }
+
+  // ---- The journey. Each section has an empty slot; the orb sits in whichever slot is level
+  // with the middle of the window and glides between them as the page scrolls.
+  const slots = [stage, ...document.querySelectorAll('.slot')];
+  function describe(el) {
+    const box = el.getBoundingClientRect();
+    if (!box.width) return null;
+    const kind = el === stage ? 'ball' : el.dataset.shape;
+    const r = Math.min(box.width, box.height) / 2 * (el === stage ? 0.84 : 1);
+    const o = { x: box.left + box.width / 2, y: box.top + box.height / 2, top: box.top + box.height / 2 + scrollY,
+                hx: r, hy: r, corner: r, w: r, bevel: r, r, live: el === stage ? 1 : 0.4, flood: 0 };
+    if (kind === 'pill') { o.hx = box.width / 2; }
+    if (kind === 'ring') { o.w = r * 0.15; o.bevel = r * 0.15; }
+    if (kind === 'tile') { o.corner = r * 0.46; o.bevel = r * 0.55; }
+    return o;
+  }
+  const ease = t => t * t * t * (t * (6 * t - 15) + 10);
+  const interlude = document.getElementById('interlude');
+  const glow = document.getElementById('glow');
+  const began = performance.now();
+  const arrival = () => {
+    if (still) return 1;
+    const t = Math.min(1, (performance.now() - began - 250) / 2300);
+    return t <= 0 ? 0.001 : 1 - Math.pow(1 - t, 4);
+  };
+  function place() {
+    const list = (still ? [stage] : slots).map(describe).filter(Boolean);
+    const line = scrollY + innerHeight * 0.42;
+    // Between the opening and the first section the orb swells until the window is inside it.
+    if (list.length > 1 && interlude.offsetHeight > innerHeight * 0.9) {
+      const box = interlude.getBoundingClientRect();
+      const top = box.top + box.height / 2 + scrollY, R = Math.hypot(innerWidth, innerHeight) * 0.6;
+      list.splice(1, 0, { x: innerWidth / 2, y: top - scrollY, top, hx: R, hy: R, corner: R, w: R, bevel: R, r: R * 0.55, live: 0.3, flood: 1 });
+    }
+    let i = 0;
+    while (i < list.length - 2 && line > list[i + 1].top) i++;
+    const a = list[i], b = list[Math.min(i + 1, list.length - 1)];
+    const t = a === b ? 0 : ease(Math.max(0, Math.min(1, (line - a.top) / (b.top - a.top))));
+    const o = {};
+    for (const key in a) o[key] = a[key] + (b[key] - a[key]) * t;
+    // The arrival: the orb grows out of a point of light.
+    const k = arrival();
+    if (k < 1) { for (const key of ['hx', 'hy', 'corner', 'w', 'bevel', 'r']) o[key] *= k; }
+    return o;
+  }
+
+  // ---- Motion: the same two-speed smoothing as the app. Quick energy for size and light,
+  // a slow heavy value for how hard the metal is stirred.
+  const m = { flow: 3.1, energy: 0, swell: 0, tiltX: 0, tiltY: 0 };
+  let goalTiltX = 0, goalTiltY = 0, holding = false, thinking = false, last = 0, churn = 0, lastScroll = scrollY;
+  let micLevel = null;
+
+  function target(t) {
+    if (micLevel) return micLevel();
+    if (holding) { const s = Math.abs(Math.sin(t * 7.3)) * (0.55 + 0.45 * Math.abs(Math.sin(t * 1.9))); return 0.25 + 0.7 * s; }
+    if (thinking) return 0.16 + 0.06 * Math.sin(t * 2.2);
+    // Scrolling stirs the metal, and so does its arrival.
+    return Math.max(0.05 + 0.04 * Math.sin(t * 0.9), churn, (1 - arrival()) * 0.9);
+  }
+  function frame(now) {
+    const t = now / 1000, dt = Math.min(0.05, last ? t - last : 0); last = t;
+    const goal = target(t);
+    m.energy += (goal - m.energy) * (1 - Math.exp(-(goal > m.energy ? 13 : 4) * dt));
+    m.swell += (m.energy - m.swell) * (1 - Math.exp(-(m.energy > m.swell ? 4.5 : 1.4) * dt));
+    m.flow += (thinking ? 0.7 : 0.55 + 2.8 * m.swell) * dt;
+    m.tiltX += (goalTiltX - m.tiltX) * (1 - Math.exp(-5 * dt));
+    m.tiltY += (goalTiltY - m.tiltY) * (1 - Math.exp(-5 * dt));
+    const moved = Math.abs(scrollY - lastScroll); lastScroll = scrollY;
+    churn += (Math.min(0.75, moved / 60) - churn) * (1 - Math.exp(-(moved / 60 > churn ? 10 : 1.6) * dt));
+    const o = place();
+    draw(m, o);
+    const size = Math.max(o.hx, o.hy) * 3.4;
+    glow.style.width = glow.style.height = size + 'px';
+    glow.style.transform = `translate(${o.x - size / 2}px, ${o.y - size / 2}px)`;
+    glow.style.opacity = Math.max(0, (0.45 + 0.55 * m.energy) * (1 - o.flood * 1.4)) * Math.min(1, arrival() * 1.5);
+    if (!still) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  if (still) { addEventListener('scroll', () => requestAnimationFrame(frame), { passive: true }); addEventListener('resize', () => requestAnimationFrame(frame)); }
+
+  // Raise the curtain, then bring each section's heading into focus as it arrives.
+  const raise = () => document.documentElement.classList.remove('pre');
+  requestAnimationFrame(() => requestAnimationFrame(raise));
+  setTimeout(raise, 400);
+  if (!still && 'IntersectionObserver' in window) {
+    const seen = new IntersectionObserver(entries => {
+      for (const e of entries) if (e.isIntersecting) { e.target.classList.remove('pre-h'); seen.unobserve(e.target); }
+    }, { rootMargin: '0px 0px -18% 0px' });
+    document.querySelectorAll('main section').forEach(sec => { sec.classList.add('pre-h'); seen.observe(sec); });
+  }
+
+  // The orb turns toward the pointer.
+  addEventListener('pointermove', e => {
+    const box = stage.getBoundingClientRect();
+    const x = (e.clientX - (box.left + box.width / 2)) / (innerWidth / 2);
+    const y = (e.clientY - (box.top + box.height / 2)) / (innerHeight / 2);
+    goalTiltX = Math.max(-1, Math.min(1, x)) * 0.6;
+    goalTiltY = Math.max(-1, Math.min(1, -y)) * 0.6;
+  }, { passive: true });
+
+  // ---- The sample dictation. Scripted: this page does not transcribe anything.
+  let timers = [];
+  const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+  const clear = () => { timers.forEach(clearTimeout); timers = []; };
+
+  function press() {
+    if (holding) return;
+    clear(); holding = true; thinking = false; stage.classList.add('held');
+    hint.textContent = 'Listening. Let go when you’re done.';
+    heard.textContent = ''; typed.textContent = '';
+    SAID.forEach((_, i) => later(() => { heard.textContent = SAID.slice(0, i + 1).join(' '); }, 260 + i * 190));
+    if (still) requestAnimationFrame(frame);
+  }
+  function release() {
+    if (!holding) return;
+    clear(); holding = false; thinking = true; stage.classList.remove('held');
+    hint.textContent = 'Transcribing';
+    heard.textContent = SAID.join(' ');
+    later(() => {
+      thinking = false;
+      hint.textContent = 'A sample sentence. The app types what you actually say.';
+      typed.innerHTML = '';
+      typed.append(TYPED);
+      const caret = document.createElement('span'); caret.className = 'caret'; typed.append(caret);
+    }, 800);
+  }
+  stage.addEventListener('pointerdown', e => { stage.setPointerCapture(e.pointerId); press(); });
+  stage.addEventListener('pointerup', release);
+  stage.addEventListener('pointercancel', release);
+  addEventListener('keydown', e => {
+    if (e.code !== 'Space' || e.repeat) return;
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'BUTTON' || tag === 'A' || tag === 'INPUT') return;
+    e.preventDefault(); press();
+  });
+  addEventListener('keyup', e => { if (e.code === 'Space') release(); });
+  addEventListener('blur', release);
+
+  // ---- Optional: let the orb move to the visitor's own voice. The sound is only measured
+  // for loudness, here in the page. It is not recorded or sent anywhere.
+  micButton.addEventListener('click', async () => {
+    if (micLevel) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const context = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = context.createAnalyser(); analyser.fftSize = 1024;
+      context.createMediaStreamSource(stream).connect(analyser);
+      const samples = new Float32Array(analyser.fftSize);
+      let floor = 1;
+      micLevel = () => {
+        analyser.getFloatTimeDomainData(samples);
+        let sum = 0; for (const v of samples) sum += v * v;
+        const db = 20 * Math.log10(Math.max(Math.sqrt(sum / samples.length), 1e-5));
+        const level = Math.max(0, Math.min(1, (db + 50) / 40));
+        floor = Math.min(floor + 0.003, level);
+        return Math.min(1, Math.max(0, level - floor - 0.04) / 0.30);
+      };
+      micButton.textContent = 'The orb is following your voice. Nothing is recorded.';
+      micButton.disabled = true; micButton.style.textDecoration = 'none'; micButton.style.cursor = 'default';
+      hint.textContent = 'Say something.';
+    } catch {
+      micButton.textContent = 'Microphone not available. Hold the orb instead.';
+    }
+  });
+
+  // Copy buttons.
+  document.querySelectorAll('.term button').forEach(button => {
+    button.addEventListener('click', async () => {
+      const text = button.previousElementSibling.textContent;
+      try { await navigator.clipboard.writeText(text); button.textContent = 'Copied'; }
+      catch { button.textContent = 'Select it'; }
+      setTimeout(() => { button.textContent = 'Copy'; }, 1600);
+    });
+  });
+})();
+</script>
+</body>
+</html>

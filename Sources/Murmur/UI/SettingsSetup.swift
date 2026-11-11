@@ -280,7 +280,14 @@ struct SetupView: View {
             }
             .id(downloader.revision)
 
-            GroupTitle("Try it")
+            HStack {
+                GroupTitle("Try it")
+                Spacer()
+                Button("Show the introduction again") { Prefs.defaults.set(false, forKey: Prefs.Key.didOnboard) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.accent)
+            }
             Card {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(micOK && axOK && installed
