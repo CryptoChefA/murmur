@@ -61,8 +61,15 @@ enum Inserter {
         let up = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: false)
         down?.flags = .maskCommand
         up?.flags = .maskCommand
-        down?.post(tap: .cgAnnotatedSessionEventTap)
-        up?.post(tap: .cgAnnotatedSessionEventTap)
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+        if UserDefaults.standard.bool(forKey: "debugKeepAudio") {
+            let responder = NSApp.keyWindow?.firstResponder.map { String(describing: type(of: $0)) } ?? "none"
+            let line = "paste posted: events=\(down != nil && up != nil) front=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?") keyWindowResponder=\(responder)\n"
+            let url = Paths.support.appendingPathComponent("paste-log.txt")
+            let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            try? (existing + line).write(to: url, atomically: true, encoding: .utf8)
+        }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             // If something else has been copied since, leave it alone.

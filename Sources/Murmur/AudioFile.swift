@@ -26,4 +26,15 @@ enum AudioFileLoader {
         guard let channel = output.floatChannelData?[0] else { return [] }
         return Array(UnsafeBufferPointer(start: channel, count: Int(output.frameLength)))
     }
+
+    /// Writes 16 kHz mono samples as a WAV file. Debugging aid only.
+    static func write(_ samples: [Float], to url: URL) {
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: AudioFormat.whisper, frameCapacity: AVAudioFrameCount(samples.count)),
+              let channel = buffer.floatChannelData?[0] else { return }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: samples.count) }
+        try? FileManager.default.removeItem(at: url)
+        let file = try? AVAudioFile(forWriting: url, settings: AudioFormat.whisper.settings)
+        try? file?.write(from: buffer)
+    }
 }

@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func applicationDidFinishLaunching(_ notification: Notification) {
         Prefs.register()
 
+        NSApp.mainMenu = makeMainMenu()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let menu = NSMenu()
         menu.delegate = self
@@ -21,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         pill = PillController(model: dictation.pill)
         dictation.onStateChange = { [weak self] in self?.updateIcon() }
         dictation.start()
+        writeDiagnostics()
 
         // `Murmur --toggle` from a script or launcher starts or finishes a dictation.
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(toggleDictation),
@@ -44,9 +46,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         return false
     }
 
+    /// With `debugKeepAudio` set, records what macOS says about this app's event permissions.
+    private func writeDiagnostics() {
+        guard Prefs.defaults.bool(forKey: "debugKeepAudio") else { return }
+        let lines = [
+            "date: \(Date())",
+            "AXIsProcessTrusted: \(AXIsProcessTrusted())",
+            "CGPreflightPostEventAccess: \(CGPreflightPostEventAccess())",
+            "CGPreflightListenEventAccess: \(CGPreflightListenEventAccess())",
+            "bundle: \(Bundle.main.bundlePath)",
+        ]
+        try? lines.joined(separator: "\n").write(to: Paths.support.appendingPathComponent("diagnostics.txt"),
+                                                  atomically: true, encoding: .utf8)
+    }
+
     func applicationDidBecomeActive(_ notification: Notification) {
+        writeDiagnostics()
         // Accessibility may have just been granted; global key monitors need re-arming.
         dictation.reloadHotkey()
+    }
+
+    /// Shown only while the main window is open. Without an Edit menu, ⌘C/⌘V/⌘A do nothing in text fields.
+    private func makeMainMenu() -> NSMenu {
+        let main = NSMenu()
+
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Hide Murmur", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit Murmur", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = edit
+        main.addItem(editItem)
+
+        let windowItem = NSMenuItem()
+        let window = NSMenu(title: "Window")
+        window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowItem.submenu = window
+        main.addItem(windowItem)
+        return main
     }
 
     // MARK: - Menu bar

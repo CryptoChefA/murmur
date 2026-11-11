@@ -176,6 +176,10 @@ final class Dictation {
             notice(seconds < 0.35 ? "Hold the key while you speak" : "Didn't hear anything", good: false)
             return
         }
+        // `defaults write app.murmur.Murmur debugKeepAudio -bool YES` keeps the last recording for inspection.
+        if Prefs.defaults.bool(forKey: "debugKeepAudio") {
+            AudioFileLoader.write(captured.samples, to: Paths.support.appendingPathComponent("last-recording.wav"))
+        }
         state = .working
         pill.phase = .thinking
         if Prefs.sounds { NSSound(named: "Pop")?.play() }
