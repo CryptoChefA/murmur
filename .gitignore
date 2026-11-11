@@ -1,0 +1,6 @@
+.build/
+vendor/
+dist/
+Sources/CWhisper/include/
+.DS_Store
+*.bin
