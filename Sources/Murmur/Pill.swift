@@ -53,7 +53,7 @@ final class PillController {
     }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 84),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 100),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -73,7 +73,7 @@ final class PillController {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
         guard let frame = screen?.visibleFrame else { return }
-        panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 18))
+        panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.minY + 12))
     }
 }
 
@@ -109,7 +109,7 @@ struct PillView: View {
             }
 
             MercuryOrb(motion: motion, model: model, thinking: !listening, alert: problem, still: reduceMotion)
-                .frame(width: listening ? 62 : 36, height: listening ? 62 : 36)
+                .frame(width: listening ? 76 : 40, height: listening ? 76 : 40)
                 .background(Circle().fill(.black.opacity(0.5)).blur(radius: 5).offset(y: 3))
 
             if !listening {
@@ -131,7 +131,7 @@ struct PillView: View {
         }
         .padding(.leading, listening ? 0 : 5)
         .padding(.trailing, listening ? 0 : 18)
-        .frame(height: listening ? 62 : 46)
+        .frame(height: listening ? 76 : 50)
         .background {
             Color.clear
                 .modifier(DarkGlass(shape: Capsule()))

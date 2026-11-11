@@ -36,7 +36,7 @@ enum ScreenRenderer {
                 model.levels = (0..<PillModel.barCount).map { i in
                     Float(0.25 + 0.6 * abs(sin(Double(i) * 0.9)) * abs(cos(Double(i) * 0.37)))
                 }
-                snapshot(PillView(model: model).environment(\.staticRender, true).background(Theme.window), size: NSSize(width: 460, height: 84),
+                snapshot(PillView(model: model).environment(\.staticRender, true).background(Theme.window), size: NSSize(width: 460, height: 100),
                          appearance: appearance, to: directory.appendingPathComponent("pill-\(name)-\(suffix).png"))
             }
         }
