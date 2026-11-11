@@ -108,20 +108,15 @@ struct PillView: View {
                 // Success needs no badge: the text appearing is the confirmation. The orb just settles and fades.
                 orb(thinking: true)
             } else {
-                HStack(spacing: 7) {
-                    Image(systemName: good ? "checkmark.circle.fill" : "exclamationmark.circle")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(good ? Theme.accent : Color.white.opacity(0.6))
-                    Text(message)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 14)
-                .frame(height: 34)
-                .background(Capsule().fill(Color(white: 0.09).opacity(0.96))
-                    .shadow(color: .black.opacity(0.4), radius: 12, y: 5))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5))
+                // Words only, on dark glass. No icon: the message is short enough to read at a glance.
+                Text(message)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                    .padding(.horizontal, 16)
+                    .frame(height: 34)
+                    .modifier(DarkGlass(shape: Capsule()))
+                    .accessibilityLabel(good ? message : "Problem: \(message)")
             }
         }
     }
@@ -150,9 +145,7 @@ private struct PillButton: View {
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(Color.white.opacity(prominent || hovering ? 1 : 0.7))
                 .frame(width: 26, height: 26)
-                .background(Circle().fill(prominent ? Theme.accent : Color(white: hovering ? 0.22 : 0.12).opacity(0.95))
-                    .shadow(color: .black.opacity(0.35), radius: 6, y: 3))
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5))
+                .modifier(ButtonSurface(prominent: prominent, hovering: hovering))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -160,4 +153,56 @@ private struct PillButton: View {
         .help(help)
         .accessibilityLabel(help)
     }
+}
+
+private struct ButtonSurface: ViewModifier {
+    let prominent: Bool
+    let hovering: Bool
+
+    func body(content: Content) -> some View {
+        if prominent {
+            content
+                .background(Circle().fill(Theme.accent).shadow(color: .black.opacity(0.35), radius: 6, y: 3))
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5))
+        } else {
+            content
+                .background(Circle().fill(Color.white.opacity(hovering ? 0.10 : 0)))
+                .modifier(DarkGlass(shape: Circle()))
+        }
+    }
+}
+
+/// Dark, slightly translucent glass: Apple's Liquid Glass where the system has it (macOS 26+),
+/// a blurred HUD material with a hairline edge everywhere else.
+struct DarkGlass<S: InsettableShape>: ViewModifier {
+    let shape: S
+
+    func body(content: Content) -> some View {
+        Group {
+            if #available(macOS 26.0, *) {
+                content.glassEffect(.regular.tint(Color.black.opacity(0.62)), in: shape)
+            } else {
+                content
+                    .background(HUDMaterial().clipShape(shape))
+                    .background(shape.fill(Color.black.opacity(0.35)))
+                    .overlay(shape.strokeBorder(
+                        LinearGradient(colors: [.white.opacity(0.28), .white.opacity(0.06)], startPoint: .top, endPoint: .bottom),
+                        lineWidth: 0.6))
+            }
+        }
+        .environment(\.colorScheme, .dark)
+        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+    }
+}
+
+private struct HUDMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .hudWindow
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.appearance = NSAppearance(named: .vibrantDark)
+        return view
+    }
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }

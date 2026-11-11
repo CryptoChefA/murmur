@@ -330,6 +330,12 @@ final class Dictation {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 
+    /// `Murmur --preview-notice "text"` shows a message for a few seconds, for checking its look.
+    func previewNotice(_ text: String) {
+        guard state == .idle else { return }
+        notice(text, good: false, seconds: 6)
+    }
+
     /// Runs the same pipeline on typed text, for the "try it" box in Setup.
     func pasteLast() {
         guard let last = store.history.first else { return }

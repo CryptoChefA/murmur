@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var window: NSWindow?
     private let dictation = Dictation.shared
     static let toggleNotification = Notification.Name("app.murmur.Murmur.toggle")
+    static let previewNotification = Notification.Name("app.murmur.Murmur.previewNotice")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Prefs.register()
@@ -27,6 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // `Murmur --toggle` from a script or launcher starts or finishes a dictation.
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(toggleDictation),
                                                             name: AppDelegate.toggleNotification, object: nil)
+
+        DistributedNotificationCenter.default().addObserver(forName: AppDelegate.previewNotification, object: nil, queue: .main) { [weak self] note in
+            self?.dictation.previewNotice(note.object as? String ?? "Didn't hear anything")
+        }
 
         // First run, or anything missing: show Setup.
         let quiet = CommandLine.arguments.contains("--background")

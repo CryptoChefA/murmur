@@ -7,6 +7,11 @@ if arguments.contains("--toggle") {
     DistributedNotificationCenter.default().postNotificationName(AppDelegate.toggleNotification, object: nil,
                                                                  userInfo: nil, deliverImmediately: true)
     exit(0)
+} else if let i = arguments.firstIndex(of: "--preview-notice") {
+    let text = i + 1 < arguments.count ? arguments[i + 1] : "Didn't hear anything"
+    DistributedNotificationCenter.default().postNotificationName(AppDelegate.previewNotification, object: text,
+                                                                 userInfo: nil, deliverImmediately: true)
+    exit(0)
 } else if arguments.contains("--transcribe") || arguments.contains("--render-screens") || arguments.contains("--render-icon") {
     CommandLineMode.run(arguments)
 } else {
