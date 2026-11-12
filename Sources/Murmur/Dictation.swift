@@ -66,6 +66,8 @@ final class Dictation {
     private var phraseTasks: [Task<String, Never>] = []
     private var phraseStart = 0
     private var releasedAt = Date()
+    /// When a recording was last thrown away (cancelled, or too short to be speech).
+    private var discardedAt = Date.distantPast
 
     var isRecording: Bool { state == .holding || state == .armed || state == .handsFree }
     var isBusy: Bool { state != .idle }
@@ -97,6 +99,8 @@ final class Dictation {
     private func keyDown() {
         switch state {
         case .idle:
+            // Hammering the key should not start and tear down the microphone many times a second.
+            guard Date().timeIntervalSince(discardedAt) > 0.3 else { return }
             pressedAt = Date()
             begin(handsFree: false)
         case .armed:
@@ -205,6 +209,7 @@ final class Dictation {
         if recorder.isRecording { _ = recorder.stop() }
         hotkey.watchEscape(false)
         let wasBusy = state != .idle
+        if wasBusy { discardedAt = Date() }
         state = .idle
         if silently || !wasBusy { pill.phase = .hidden } else { notice("Cancelled", good: false, seconds: 0.8) }
     }
@@ -217,7 +222,10 @@ final class Dictation {
         guard seconds >= 0.35, captured.peak > 0.12 else {
             state = .idle
             hotkey.watchEscape(false)
-            notice(seconds < 0.35 ? "Hold the key while you speak" : "Didn't hear anything", good: false)
+            discardedAt = Date()
+            // Under a second is a stray tap, not an attempt to speak: go away quietly. Only a
+            // real try that picked up nothing gets told so.
+            if seconds < 1.0 { pill.phase = .hidden } else { notice("Didn't hear anything", good: false) }
             return
         }
         // `defaults write app.murmur.Murmur debugKeepAudio -bool YES` keeps the last recording for inspection.

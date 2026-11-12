@@ -7,6 +7,8 @@ import Combine
 final class PillController {
     private var panel: NSPanel?
     private var subscription: AnyCancellable?
+    /// Counts shows and hides, so a fade that has been overtaken cannot close the panel.
+    private var turn = 0
     private let model: PillModel
 
     init(model: PillModel) {
@@ -21,6 +23,7 @@ final class PillController {
     }
 
     private func show() {
+        turn += 1
         let panel = self.panel ?? makePanel()
         self.panel = panel
         position(panel)
@@ -38,6 +41,8 @@ final class PillController {
 
     private func hide() {
         guard let panel, panel.isVisible else { return }
+        turn += 1
+        let mine = turn
         NSAnimationContext.runAnimationGroup({ context in
             // A slow, easing fade: the orb keeps moving and sinks away rather than blinking off.
             context.duration = 0.55
@@ -45,9 +50,9 @@ final class PillController {
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             // Drop the whole view tree: nothing left to animate or redraw while idle.
-            if self?.model.phase == .hidden {
+            if let self, self.turn == mine, self.model.phase == .hidden {
                 panel.orderOut(nil)
-                self?.panel = nil
+                self.panel = nil
             }
         })
     }
