@@ -47,6 +47,33 @@ enum OrbStyle: String, CaseIterable, Identifiable {
     static var current: OrbStyle { OrbStyle(rawValue: Prefs.defaults.string(forKey: Prefs.Key.orbStyle) ?? "") ?? .mercury }
 }
 
+/// The orb's colours: the dark it sinks to and the bright it rises to.
+enum OrbTint: String, CaseIterable, Identifiable {
+    case chrome, indigo, ember, mint, rose
+    var id: String { rawValue }
+    var label: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    static var current: OrbTint { OrbTint(rawValue: Prefs.defaults.string(forKey: Prefs.Key.orbTint) ?? "") ?? .chrome }
+
+    var deep: SIMD4<Float> {
+        switch self {
+        case .chrome: return SIMD4(0.030, 0.040, 0.130, 0)
+        case .indigo: return SIMD4(0.050, 0.025, 0.230, 0)
+        case .ember: return SIMD4(0.130, 0.035, 0.015, 0)
+        case .mint: return SIMD4(0.010, 0.090, 0.085, 0)
+        case .rose: return SIMD4(0.140, 0.020, 0.080, 0)
+        }
+    }
+    var bright: SIMD4<Float> {
+        switch self {
+        case .chrome: return SIMD4(0.930, 0.950, 1.000, 0)
+        case .indigo: return SIMD4(0.780, 0.800, 1.000, 0)
+        case .ember: return SIMD4(1.000, 0.860, 0.700, 0)
+        case .mint: return SIMD4(0.780, 1.000, 0.920, 0)
+        case .rose: return SIMD4(1.000, 0.820, 0.900, 0)
+        }
+    }
+}
+
 /// One frame's worth of numbers for the shader.
 struct OrbFrame {
     var flow: Double
@@ -54,6 +81,7 @@ struct OrbFrame {
     var swell: CGFloat = 0
     var alert: CGFloat = 0
     var calm: CGFloat = 0
+    var tint: OrbTint = .current
 }
 
 /// Draws the orb: liquid chrome flowing over a sphere, in the spirit of the "Mercury" voice orb
@@ -91,9 +119,9 @@ final class MercuryRenderer {
         guard let pipeline = pipelines[style], let buffer = queue.makeCommandBuffer(),
               let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return nil }
         var uniforms = [SIMD4<Float>(Float(frame.flow.truncatingRemainder(dividingBy: 4_000)), Float(frame.energy), Float(frame.alert), Float(frame.swell)),
-                        SIMD4<Float>(Float(frame.calm), 0, 0, 0)]
+                        SIMD4<Float>(Float(frame.calm), 0, 0, 0), frame.tint.deep, frame.tint.bright]
         encoder.setRenderPipelineState(pipeline)
-        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.stride * 2, index: 0)
+        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<SIMD4<Float>>.stride * 4, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         return buffer
@@ -157,7 +185,7 @@ final class MercuryRenderer {
         return rise * fall * body;
     }
 
-    struct Uniforms { float4 a; float4 b; };
+    struct Uniforms { float4 a; float4 b; float4 deep; float4 bright; };
 
     fragment float4 orb_fragment(Varying in [[stage_in]], constant Uniforms &U [[buffer(0)]]) {
         float flow = U.a.x, energy = U.a.y, alert = U.a.z, swell = U.a.w;
@@ -184,8 +212,8 @@ final class MercuryRenderer {
         float spread = 0.012 + 0.028 * swell;
         float3 band = float3(chrome(s + spread), chrome(s), chrome(s - spread));
 
-        float3 deep = mix(float3(0.030, 0.040, 0.130), float3(0.150, 0.008, 0.030), alert);
-        float3 bright = mix(float3(0.930, 0.950, 1.000), float3(1.000, 0.340, 0.300), alert);
+        float3 deep = mix(U.deep.rgb, float3(0.150, 0.008, 0.030), alert);
+        float3 bright = mix(U.bright.rgb, float3(1.000, 0.340, 0.300), alert);
         float3 colour = deep + (bright - deep) * band;
 
         // Shade it as a ball: darker toward the rim, a soft highlight up and to the left.
@@ -243,7 +271,7 @@ final class MercuryRenderer {
             float soft = clamp(fwidth(v) * 1.4, 0.004, 0.2);
             dots = (1.0 - smoothstep(size - soft, size + soft, d)) * smoothstep(0.0, 0.14, z);
         }
-        float3 ink = mix(float3(0.93, 0.95, 1.00), float3(1.00, 0.36, 0.30), alert);
+        float3 ink = mix(U.bright.rgb, float3(1.00, 0.36, 0.30), alert);
         return float4(ink * dots, dots + back * (1.0 - dots));
     }
     """
@@ -259,6 +287,8 @@ struct MercuryOrb: View {
     var still: Bool
     var style: OrbStyle = .mercury
     @Environment(\.staticRender) private var staticRender
+    /// Redraws the still version when the colour is changed in Settings; the live one reads it each frame.
+    @AppStorage(Prefs.Key.orbTint) private var tintName = OrbTint.chrome.rawValue
 
     var body: some View {
         if staticRender || MercuryRenderer.shared == nil {

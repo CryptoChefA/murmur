@@ -6,15 +6,18 @@ public enum TextRules {
     public struct Options {
         public var removeFillers: Bool
         public var spokenCommands: Bool
-        public init(removeFillers: Bool = true, spokenCommands: Bool = true) {
-            self.removeFillers = removeFillers; self.spokenCommands = spokenCommands
+        /// Also drop verbal habits ("well", "you know", "I mean"). The Thorough level.
+        public var removeHabits: Bool
+        public init(removeFillers: Bool = true, spokenCommands: Bool = true, removeHabits: Bool = false) {
+            self.removeFillers = removeFillers; self.spokenCommands = spokenCommands; self.removeHabits = removeHabits
         }
     }
 
     public static func process(_ raw: String, replacements: [Replacement], snippets: [Snippet],
                                options: Options = Options()) -> String {
         var t = stripNonSpeech(raw)
-        if options.removeFillers { t = removeFillers(t) }
+        if options.removeFillers { t = removeFillers(t); t = collapseStutters(t) }
+        if options.removeHabits { t = removeHabits(t) }
         t = applyReplacements(t, replacements)
         if options.spokenCommands { t = applySpokenCommands(t) }
         t = tidy(t)
@@ -65,6 +68,41 @@ public enum TextRules {
         // The filler, plus the comma or pause that came with it.
         var t = replace(s, #"(?<![\p{L}\p{N}'])(?:u+m+|u+h+m*|e+r+m+|h+m+)(?![\p{L}\p{N}'])[,…]*\s*"#, "")
         t = replace(t, #"^\s*[,.]\s*"#, "")
+        return t
+    }
+
+    /// "I, I, I think" and "the the slides": a word said again straight away is a stutter.
+    /// Any word repeated across commas counts. Without a comma only small joining words do,
+    /// because "that that" and "had had" can be meant.
+    public static func collapseStutters(_ s: String) -> String {
+        var t = replace(s, #"(?i)\b([\p{L}']+)(?:\s*,\s*\1\b)+"#, "$1")
+        t = replace(t, #"(?i)\b(I|I'm|I've|the|a|an|and|to|we|it|it's|is|so|but|of|in|my|you|they|he|she)(?:\s+\1\b)+"#, "$1")
+        return t
+    }
+
+    /// Words that fill a pause without meaning anything: a sentence that opens with "Well," or
+    /// "So," or "You know," and the "you know" and "I mean" dropped into the middle of one.
+    public static func removeHabits(_ s: String) -> String {
+        let opener = #"(?:well|so|okay so|ok so|okay|you know|i mean|like|basically|honestly|anyway)"#
+        var t = s
+        // At the start of the text or of a sentence: drop it and capitalise what follows.
+        for _ in 0..<3 {
+            guard let regex = try? NSRegularExpression(pattern: "(^|[.!?]\\s+)" + opener + ",?\\s+(\\p{L})", options: [.caseInsensitive]) else { break }
+            let ns = t as NSString
+            var out = "", last = 0, changed = false
+            for match in regex.matches(in: t, range: NSRange(location: 0, length: ns.length)) {
+                out += ns.substring(with: NSRange(location: last, length: match.range.location - last))
+                out += ns.substring(with: match.range(at: 1)) + ns.substring(with: match.range(at: 2)).uppercased()
+                last = match.range.location + match.range.length
+                changed = true
+            }
+            out += ns.substring(from: last)
+            t = out
+            if !changed { break }
+        }
+        // In the middle, set off by commas.
+        t = replace(t, #"(?i),\s*(?:you know|i mean|like|basically|sort of|kind of)\s*,"#, ",")
+        t = replace(t, #"(?i)\s+(?:you know|i mean)\s+"#, " ")
         return t
     }
 

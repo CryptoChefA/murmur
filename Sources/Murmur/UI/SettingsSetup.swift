@@ -14,9 +14,20 @@ struct SettingsView: View {
     @AppStorage(Prefs.Key.sounds) private var sounds = true
     @AppStorage(Prefs.Key.keepOnClipboard) private var keepOnClipboard = false
     @AppStorage(Prefs.Key.orbStyle) private var orbStyle = OrbStyle.mercury.rawValue
+    @AppStorage(Prefs.Key.orbTint) private var orbTint = OrbTint.chrome.rawValue
+    @AppStorage(Prefs.Key.whisperMode) private var whisperMode = false
+    @AppStorage(Prefs.Key.livePreview) private var livePreview = true
+    @AppStorage(Prefs.Key.contextNames) private var contextNames = true
+    @AppStorage(Prefs.Key.learnWords) private var learnWords = true
+    @AppStorage(Prefs.Key.editKey) private var editKey = "rightOption"
+    @AppStorage(Prefs.Key.shortcuts) private var shortcuts = true
+    @AppStorage(Prefs.Key.updateChecks) private var updateChecks = true
+    @AppStorage(Prefs.Key.avoidBluetoothMic) private var avoidBluetoothMic = true
+    @AppStorage(Prefs.Key.whileDictating) private var whileDictating = MediaControl.Mode.pause.rawValue
+    @ObservedObject private var updater = Updater.shared
     @AppStorage(Prefs.Key.modelID) private var modelID = ModelCatalog.defaultID
     @AppStorage(Prefs.Key.cleanupEngine) private var cleanupEngine = CleanupEngine.onDevice.rawValue
-    @AppStorage(Prefs.Key.idleMinutes) private var idleMinutes = 5.0
+    @AppStorage(Prefs.Key.idleMinutes) private var idleMinutes = 0.0
     @State private var microphones: [AudioDevice] = []
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var apiKey = ""
@@ -71,6 +82,32 @@ struct SettingsView: View {
                         .pickerStyle(.segmented).labelsHidden().fixedSize()
                     }
                     RowDivider()
+                    SettingRow(title: "Orb colour", detail: "The metal's tint. A problem always shows red.") {
+                        Picker("Orb colour", selection: $orbTint) {
+                            ForEach(OrbTint.allCases) { Text($0.label).tag($0.rawValue) }
+                        }
+                        .labelsHidden().fixedSize().frame(width: 190, alignment: .trailing)
+                    }
+                    RowDivider()
+                    SettingRow(title: "Show words as you speak", detail: "Each phrase appears under the orb at the pause after it, so you can see it's keeping up.") {
+                        Toggle("Show words as you speak", isOn: $livePreview).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    RowDivider()
+                    SettingRow(title: "Whisper mode", detail: "For speaking very quietly. Listens for softer speech and lifts it before transcribing.") {
+                        Toggle("Whisper mode", isOn: $whisperMode).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    RowDivider()
+                    SettingRow(title: "Music while you dictate", detail: "Spotify and Apple Music pause and pick up where they left off. Anything else playing is turned down instead. The first time, macOS asks whether Murmur may control Spotify or Music.") {
+                        Picker("Music while you dictate", selection: $whileDictating) {
+                            ForEach(MediaControl.Mode.allCases) { Text($0.label).tag($0.rawValue) }
+                        }
+                        .labelsHidden().fixedSize().frame(width: 190, alignment: .trailing)
+                    }
+                    RowDivider()
+                    SettingRow(title: "Keep music smooth on Bluetooth", detail: "Uses the Mac's own microphone when the default one is a Bluetooth headset. Opening a headset's microphone drops its sound to call quality.") {
+                        Toggle("Keep music smooth on Bluetooth", isOn: $avoidBluetoothMic).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    RowDivider()
                     SettingRow(title: "Keep dictation on clipboard",
                                detail: "On: the text stays copied so you can paste it again. Off: whatever you had copied before is put back.") {
                         Toggle("Keep dictation on clipboard", isOn: $keepOnClipboard).labelsHidden().toggleStyle(.switch).controlSize(.small)
@@ -120,16 +157,60 @@ struct SettingsView: View {
                 .padding(.horizontal, 16)
             }
 
+            GroupTitle("Smarter")
+            Card(padding: 0) {
+                VStack(spacing: 0) {
+                    SettingRow(title: "Edit by voice", detail: "Select some text, hold this key, and say how to change it: “make this shorter”, “turn this into a list”.") {
+                        Picker("Edit by voice", selection: $editKey) {
+                            Text("Off").tag("none")
+                            ForEach(Hotkey.choices.filter { $0.id != hotkey }) { Text($0.label).tag($0.id) }
+                        }
+                        .labelsHidden().fixedSize().frame(width: 190, alignment: .trailing)
+                    }
+                    RowDivider()
+                    SettingRow(title: "Use names on screen", detail: "Reads the text box you're typing in so names already there are spelled the same way. Read on this Mac, never saved, never sent to a cloud engine.") {
+                        Toggle("Use names on screen", isOn: $contextNames).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    RowDivider()
+                    SettingRow(title: "Learn from corrections", detail: "If you fix a word Murmur typed, it offers the fix on the Dictionary page. Nothing is added until you say so.") {
+                        Toggle("Learn from corrections", isOn: $learnWords).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    RowDivider()
+                    SettingRow(title: "Shortcuts", detail: "⌃⌥V pastes your last dictation again. ⌃⌥Z undoes it.") {
+                        Toggle("Shortcuts", isOn: $shortcuts).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+
+            GroupTitle("Updates")
+            Card(padding: 0) {
+                VStack(spacing: 0) {
+                    SettingRow(title: "Check for updates", detail: "Asks GitHub once a day whether a newer Murmur exists. Nothing about you is sent.") {
+                        Toggle("Check for updates", isOn: $updateChecks).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                    }
+                    RowDivider()
+                    SettingRow(title: updater.summary, detail: updater.canInstall ? "Updating downloads the new source and rebuilds Murmur on this Mac." : "") {
+                        if case .available = updater.status {
+                            Button(updater.canInstall ? "Update Now" : "Open GitHub") { updater.install() }
+                        } else {
+                            Button("Check Now") { updater.check() }.disabled(updater.status == .checking || updater.status == .installing)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+
             GroupTitle("System")
             Card(padding: 0) {
                 VStack(spacing: 0) {
-                    SettingRow(title: "Release the model after", detail: "The speech model uses memory only while loaded. It reloads in about a second.") {
-                        Picker("Release the model after", selection: $idleMinutes) {
-                            Text("Each dictation").tag(0.0)
-                            Text("1 minute").tag(1.0)
-                            Text("5 minutes").tag(5.0)
-                            Text("30 minutes").tag(30.0)
-                            Text("Never").tag(100_000.0)
+                    SettingRow(title: "Keep the speech model loaded", detail: "It loads in about a quarter of a second when you press the key, while you're already talking, so there's no wait. Keeping it loaded holds about 700 MB of memory.") {
+                        Picker("Keep the speech model loaded", selection: $idleMinutes) {
+                            Text("Only while dictating").tag(0.0)
+                            Text("1 minute after").tag(1.0)
+                            Text("5 minutes after").tag(5.0)
+                            Text("30 minutes after").tag(30.0)
+                            Text("Always").tag(100_000.0)
                         }
                         .labelsHidden().fixedSize().frame(width: 190, alignment: .trailing)
                     }
@@ -157,6 +238,8 @@ struct SettingsView: View {
             loadCloudFields()
         }
         .onChange(of: hotkey) { _, _ in Dictation.shared.reloadHotkey() }
+        .onChange(of: editKey) { _, _ in Dictation.shared.reloadHotkey() }
+        .onChange(of: shortcuts) { _, on in Shortcuts.shared.apply(enabled: on) }
         .onChange(of: cleanupEngine) { _, _ in loadCloudFields() }
         .onChange(of: idleMinutes) { _, value in WhisperEngine.shared.idleMinutes = value }
     }

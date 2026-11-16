@@ -19,6 +19,7 @@ enum ScreenRenderer {
                     .environmentObject(Store.demo())
                     .environmentObject(nav)
                     .environmentObject(ModelDownloader.shared)
+                    .environment(\.staticRender, true)
                 snapshot(view, size: NSSize(width: 900, height: 660), appearance: appearance,
                          to: directory.appendingPathComponent("\(section.rawValue)-\(suffix).png"))
             }

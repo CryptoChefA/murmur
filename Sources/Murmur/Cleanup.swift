@@ -19,7 +19,44 @@ enum Cleanup {
         var errorDescription: String? { reason }
     }
 
-    static func run(_ text: String, level: CleanupLevel, tone: Tone, vocabulary: [String],
+    /// Long dictation is cleaned a few sentences at a time. One long request is slow enough to
+    /// hit the time limit, and when that happens nothing is cleaned at all.
+    static func run(_ text: String, level: CleanupLevel, tone: Tone, vocabulary: [String], engine: CleanupEngine) async -> Result {
+        let pieces = split(text, limit: 90)
+        guard pieces.count > 1 else {
+            return await runOne(text, level: level, tone: tone, vocabulary: vocabulary, engine: engine,
+                                timeout: 8 + Double(TextRules.wordCount(text)) / 10)
+        }
+        var out: [String] = [], used = "none"
+        for piece in pieces {
+            let result = await runOne(piece, level: level, tone: tone, vocabulary: vocabulary, engine: engine, timeout: 16)
+            if result.engine != "none" { used = result.engine }
+            out.append(result.text)
+        }
+        return Result(text: out.joined(separator: text.contains("\n\n") ? "\n\n" : " "), engine: used)
+    }
+
+    /// Whole sentences grouped into pieces of roughly `limit` words.
+    static func split(_ text: String, limit: Int) -> [String] {
+        guard TextRules.wordCount(text) > limit + 30 else { return [text] }
+        var pieces: [String] = [], current = "", count = 0
+        var sentence = ""
+        func flush() {
+            let n = TextRules.wordCount(sentence)
+            if count + n > limit, !current.isEmpty { pieces.append(current.trimmingCharacters(in: .whitespaces)); current = ""; count = 0 }
+            current += sentence; count += n; sentence = ""
+        }
+        var previous: Character = " "
+        for ch in text {
+            if ch == " " || ch == "\n", ".!?".contains(previous) { sentence.append(ch); flush() } else { sentence.append(ch) }
+            previous = ch
+        }
+        flush()
+        if !current.trimmingCharacters(in: .whitespaces).isEmpty { pieces.append(current.trimmingCharacters(in: .whitespaces)) }
+        return pieces
+    }
+
+    private static func runOne(_ text: String, level: CleanupLevel, tone: Tone, vocabulary: [String],
                     engine: CleanupEngine, timeout: Double = 8) async -> Result {
         // Nothing for a model to improve in one or two words.
         guard level != .off, tone != .verbatim, TextRules.wordCount(text) >= 3 else {
@@ -52,6 +89,35 @@ enum Cleanup {
             return Result(text: text, engine: "none")
         }
         return Result(text: cleaned, engine: engine == .onDevice ? "on-device" : engine.rawValue)
+    }
+
+    /// Edit by voice: applies a spoken instruction to a piece of text. Nil when no model answered.
+    static func rewrite(_ text: String, instruction: String, engine: CleanupEngine, timeout: Double = 25) async -> String? {
+        let instructions = """
+        You edit text for the user. Apply their instruction to the text they give you. \
+        Reply with the edited text only: no preamble, no explanation, no quotation marks around it. \
+        Keep the language, names and facts of the original unless the instruction says otherwise.
+        """
+        let message = "Instruction: \(instruction)\n\nText:\n\(text)"
+        let answer: String? = await withTaskGroup(of: String?.self) { group in
+            group.addTask {
+                do {
+                    switch engine {
+                    case .onDevice: return try await onDevice(instructions, message)
+                    default: return try await cloud(engine, instructions, message)
+                    }
+                } catch { return nil }
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+        let trimmed = answer?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     // MARK: - Apple's on-device model

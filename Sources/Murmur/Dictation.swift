@@ -15,6 +15,12 @@ final class PillModel: ObservableObject {
     /// Recent microphone levels, newest last.
     @Published var levels: [Float] = Array(repeating: 0, count: PillModel.barCount)
     @Published var started = Date()
+    /// Phrases already transcribed during this recording, shown under the orb.
+    @Published var live = ""
+    /// True while the edit key is driving: the words spoken are an instruction, not text.
+    @Published var editing = false
+    /// How far above the room a voice must rise to count as full. Lower in whisper mode.
+    var reach: Float = 0.30
 
     static let barCount = 22
 
@@ -32,7 +38,7 @@ final class PillModel: ObservableObject {
 
         // The quietest recent level is the room. It follows drops at once and creeps up slowly.
         floor = min(floor + 0.003, level)
-        let above = CGFloat(max(0, level - floor - 0.04)) / 0.30
+        let above = CGFloat(max(0, level - floor - (reach < 0.2 ? 0.02 : 0.04)) / reach)
         voice = min(1, above)
     }
 
@@ -49,13 +55,28 @@ final class Dictation {
 
     let pill = PillModel()
     let hotkey = Hotkey()
+    /// A second key: hold it with text selected and say how to change it.
+    let editHotkey = Hotkey()
     var onStateChange: (() -> Void)?
 
     private let recorder = Recorder()
     private let store = Store.shared
 
     private enum State { case idle, holding, armed, handsFree, working }
-    private var state: State = .idle { didSet { onStateChange?() } }
+    private var state: State = .idle {
+        didSet {
+            if state == .idle {
+                editing = false; pill.editing = false
+                if oldValue != .idle { WhisperEngine.shared.end(); MediaControl.shared.dictationEnded() }
+            }
+            onStateChange?()
+        }
+    }
+    private var editing = false
+    private var micUsed = ""
+    private var selection = ""
+    /// Names read from the text box in front, for this dictation only.
+    private var screenNames: [String] = []
     private var pressedAt = Date()
     private var armedTimeout: DispatchWorkItem?
     private var limit: DispatchWorkItem?
@@ -71,7 +92,11 @@ final class Dictation {
 
     var isRecording: Bool { state == .holding || state == .armed || state == .handsFree }
     var isBusy: Bool { state != .idle }
-    var paused = false { didSet { paused ? hotkey.stop() : hotkey.start(choiceID: Prefs.hotkey) } }
+    var paused = false {
+        didSet {
+            if paused { hotkey.stop(); editHotkey.stop() } else { hotkey.start(choiceID: Prefs.hotkey); startEditKey() }
+        }
+    }
 
     private init() {
         recorder.onLevel = { [weak self] level in
@@ -82,21 +107,80 @@ final class Dictation {
         hotkey.onDown = { [weak self] in self?.keyDown() }
         hotkey.onUp = { [weak self] in self?.keyUp() }
         hotkey.onEscape = { [weak self] in self?.cancel() }
+        editHotkey.onDown = { [weak self] in self?.editDown() }
+        editHotkey.onUp = { [weak self] in self?.editUp() }
     }
 
     func start() {
         hotkey.start(choiceID: Prefs.hotkey)
+        startEditKey()
+    }
+
+    private func startEditKey() {
+        let key = Prefs.editKey
+        // The same key cannot do both jobs.
+        if key == "none" || key == Prefs.hotkey { editHotkey.stop() } else { editHotkey.start(choiceID: key) }
     }
 
     /// Re-reads the hotkey after a settings change or a newly granted permission.
     func reloadHotkey() {
         guard !paused, !isBusy else { return }
         hotkey.start(choiceID: Prefs.hotkey)
+        startEditKey()
     }
 
     // MARK: - Keys
 
+    // MARK: - Edit by voice
+
+    private func editDown() {
+        guard state == .idle, Date().timeIntervalSince(discardedAt) > 0.3 else { return }
+        pressedAt = Date()
+        selection = ""
+        // Copy the selection now, while the app still has it.
+        Inserter.selection { [weak self] text in self?.selection = text }
+        editing = true
+        begin(handsFree: false)
+        if state == .holding { pill.editing = true } else { editing = false }
+    }
+
+    private func editUp() {
+        guard state == .holding, editing else { return }
+        if Date().timeIntervalSince(pressedAt) < 0.3 { cancel(silently: true) } else { finish() }
+    }
+
+    private func finishEdit(instruction: String) {
+        let text = selection
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            state = .idle
+            hotkey.watchEscape(false)
+            notice("Select some text first", good: false)
+            return
+        }
+        let engine = Prefs.cleanupEngine
+        job = Task { [weak self] in
+            let rewritten = await Cleanup.rewrite(text, instruction: instruction, engine: engine)
+            if Task.isCancelled { return }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.state = .idle
+                self.job = nil
+                self.hotkey.watchEscape(false)
+                guard let rewritten else {
+                    self.notice(Cleanup.onDeviceProblem ?? "Couldn't rewrite that", good: false)
+                    return
+                }
+                // Pasting over the selection replaces it.
+                switch Inserter.insert(rewritten) {
+                case .pasted: self.notice("", good: true, seconds: 0.35)
+                case .copiedOnly: self.notice("Copied. Press ⌘V to paste", good: true, seconds: 2.5)
+                }
+            }
+        }
+    }
+
     private func keyDown() {
+        guard !editing else { return }
         switch state {
         case .idle:
             // Hammering the key should not start and tear down the microphone many times a second.
@@ -116,7 +200,7 @@ final class Dictation {
     }
 
     private func keyUp() {
-        guard state == .holding else { return }
+        guard state == .holding, !editing else { return }
         let held = Date().timeIntervalSince(pressedAt)
         if held < 0.3, Prefs.handsFree {
             // A tap, not a hold. Wait briefly for a second tap before giving up.
@@ -151,8 +235,11 @@ final class Dictation {
             return
         }
         target = NSWorkspace.shared.frontmostApplication
+        // Before the start sound, so that sound isn't taken for music playing.
+        MediaControl.shared.dictationStarted { [weak self] in self?.isRecording ?? false }
         do {
             try recorder.start(deviceUID: Prefs.micUID)
+            micUsed = recorder.deviceName
         } catch {
             notice(error.localizedDescription, good: false)
             return
@@ -160,6 +247,18 @@ final class Dictation {
         noticeTimeout?.cancel()
         phraseTasks = []
         phraseStart = 0
+        pill.live = ""
+        pill.reach = Prefs.whisperMode ? 0.14 : 0.30
+        // A correction made since the last dictation is noticed now, before anything new is typed.
+        Learner.review()
+        screenNames = []
+        if Prefs.contextNames, !editing {
+            let element = ScreenContext.focusedElement()
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let names = ScreenContext.names(in: ScreenContext.text(of: element) ?? "")
+                DispatchQueue.main.async { self?.screenNames = names }
+            }
+        }
         state = handsFree ? .handsFree : .holding
         pill.resetLevels()
         pill.started = Date()
@@ -169,7 +268,7 @@ final class Dictation {
 
         // Load the model while the user is still talking.
         WhisperEngine.shared.idleMinutes = Prefs.idleMinutes
-        WhisperEngine.shared.preload(modelPath: ModelCatalog.path(for: Prefs.modelID))
+        WhisperEngine.shared.begin(modelPath: ModelCatalog.path(for: Prefs.modelID))
         Cleanup.prewarm(level: Prefs.cleanupLevel, tone: store.tone(for: target?.bundleIdentifier ?? ""),
                         vocabulary: store.vocabulary, engine: Prefs.cleanupEngine)
 
@@ -186,11 +285,38 @@ final class Dictation {
         guard isRecording, Prefs.streaming, cut > phraseStart else { return }
         let samples = recorder.slice(phraseStart..<cut)
         phraseStart = cut
-        if !samples.isEmpty { phraseTasks.append(transcribePhrase(samples, after: phraseTasks.last)) }
+        guard !samples.isEmpty else { return }
+        let task = transcribePhrase(samples, after: phraseTasks.last)
+        phraseTasks.append(task)
+        guard Prefs.livePreview, !editing else { return }
+        Task { [weak self] in
+            let text = await task.value
+            await MainActor.run { [weak self] in
+                guard let self, self.isRecording, !text.isEmpty else { return }
+                self.pill.live = String((self.pill.live + " " + text).trimmingCharacters(in: .whitespaces).suffix(64))
+            }
+        }
+    }
+
+    /// Quiet speech is lifted to a normal level before the speech model hears it.
+    private func prepared(_ samples: [Float]) -> [Float] {
+        guard Prefs.whisperMode else { return samples }
+        var peak: Float = 0
+        for v in samples { peak = max(peak, abs(v)) }
+        guard peak > 0.000_5, peak < 0.5 else { return samples }
+        let gain = min(30, 0.6 / peak)
+        return samples.map { $0 * gain }
+    }
+
+    /// The dictionary's hints plus any names on screen.
+    private var glossary: String {
+        let names = screenNames.joined(separator: ", ")
+        return [TextRules.vocabularyPrompt(store.dictionary), names].filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
     private func transcribePhrase(_ samples: [Float], after previous: Task<String, Never>?) -> Task<String, Never> {
-        let glossary = TextRules.vocabularyPrompt(store.dictionary)
+        let glossary = self.glossary
+        let samples = prepared(samples)
         let model = ModelCatalog.path(for: Prefs.modelID), language = Prefs.language
         return Task {
             // The end of the previous phrase keeps spelling and punctuation consistent across the cut.
@@ -219,10 +345,11 @@ final class Dictation {
         armedTimeout?.cancel(); limit?.cancel()
         let captured = recorder.stop()
         let seconds = Double(captured.samples.count) / 16_000
-        guard seconds >= 0.35, captured.peak > 0.12 else {
+        guard seconds >= 0.35, captured.peak > (Prefs.whisperMode ? 0.04 : 0.12) else {
             state = .idle
             hotkey.watchEscape(false)
             discardedAt = Date()
+            note(String(format: "discarded %.1f s of audio, peak %.2f, mic %@", seconds, captured.peak, micUsed))
             // Under a second is a stray tap, not an attempt to speak: go away quietly. Only a
             // real try that picked up nothing gets told so.
             if seconds < 1.0 { pill.phase = .hidden } else { notice("Didn't hear anything", good: false) }
@@ -241,7 +368,12 @@ final class Dictation {
         let bundleID = app?.bundleIdentifier ?? ""
         let tone = store.tone(for: bundleID)
         let replacements = store.dictionary, snippets = store.snippets, vocabulary = store.vocabulary
-        let quiet = captured.peak < 0.3
+        let quiet = captured.peak < (Prefs.whisperMode ? 0.12 : 0.3)
+        let isEdit = editing
+        let hints = glossary
+        // Names from the screen go to the on-device model only. They are never sent to a cloud engine.
+        let cleanupWords = Prefs.cleanupEngine == .onDevice ? vocabulary + screenNames : vocabulary
+        let whole = prepared(captured.samples)
 
         // Whatever was said after the last pause still needs transcribing.
         var pending = phraseTasks
@@ -258,8 +390,8 @@ final class Dictation {
                 let raw: String
                 if phrases.isEmpty {
                     raw = try await WhisperEngine.shared.transcribe(
-                        samples: captured.samples, modelPath: ModelCatalog.path(for: Prefs.modelID),
-                        language: Prefs.language, prompt: TextRules.vocabularyPrompt(replacements))
+                        samples: whole, modelPath: ModelCatalog.path(for: Prefs.modelID),
+                        language: Prefs.language, prompt: hints)
                 } else {
                     var parts: [String] = []
                     for phrase in phrases {
@@ -271,16 +403,21 @@ final class Dictation {
                 if Task.isCancelled { return }
 
                 let ruled = TextRules.process(raw, replacements: replacements, snippets: snippets,
-                                              options: .init(removeFillers: Prefs.removeFillers, spokenCommands: Prefs.spokenCommands))
+                                              options: .init(removeFillers: Prefs.removeFillers, spokenCommands: Prefs.spokenCommands,
+                                                             removeHabits: level == .thorough && !isEdit))
                 // Whisper invents stock phrases for near-silence; only trust them from clear audio.
                 if ruled.isEmpty || (quiet && TextRules.isHallucination(ruled)) {
                     await MainActor.run { [weak self] in self?.complete(nil, raw: raw, app: app, seconds: seconds, engine: "none") }
                     return
                 }
+                if isEdit {
+                    await MainActor.run { [weak self] in self?.finishEdit(instruction: ruled) }
+                    return
+                }
                 // Already clean? Paste now rather than wait a second for the model to agree.
                 let cleaned: Cleanup.Result
                 if CleanupPrompt.needsModel(raw: raw, ruled: ruled, level: level, tone: tone) {
-                    cleaned = await Cleanup.run(ruled, level: level, tone: tone, vocabulary: vocabulary, engine: Prefs.cleanupEngine)
+                    cleaned = await Cleanup.run(ruled, level: level, tone: tone, vocabulary: cleanupWords, engine: Prefs.cleanupEngine)
                 } else {
                     cleaned = Cleanup.Result(text: ruled, engine: "none")
                 }
@@ -314,17 +451,30 @@ final class Dictation {
         job = nil
         hotkey.watchEscape(false)
         guard let text, !text.isEmpty else {
+            note("nothing usable from \(Int(seconds)) s of audio in \(app?.localizedName ?? "unknown")")
             notice("Didn't catch that", good: false)
             return
         }
         // Terminals and chat boxes send on Return; a trailing space is the safer join.
+        Learner.willPaste(text)
         let outcome = Inserter.insert(text.hasSuffix("\n") ? text : text + " ")
         store.add(HistoryEntry(text: text, raw: raw, app: app?.localizedName ?? "", bundleID: app?.bundleIdentifier ?? "",
                                duration: seconds, cleanup: engine))
+        note("typed \(TextRules.wordCount(text)) words into \(app?.localizedName ?? "unknown"), cleanup \(engine), mic \(micUsed), history now \(store.history.count)")
         switch outcome {
         case .pasted: notice("", good: true, seconds: 0.35)
         case .copiedOnly: notice("Copied. Press ⌘V to paste", good: true, seconds: 2.5)
         }
+    }
+
+    /// One line per dictation in activity.txt: when, how many words, where, and whether it was
+    /// logged. Never the words themselves. Kept to the last 50 lines.
+    private func note(_ what: String) {
+        let url = Paths.support.appendingPathComponent("activity.txt")
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        var lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        lines.append("\(stamp) \(what)")
+        try? lines.suffix(50).joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func notice(_ message: String, good: Bool, seconds: Double = 1.8) {
@@ -357,5 +507,11 @@ final class Dictation {
     func pasteLast() {
         guard let last = store.history.first else { return }
         Inserter.insert(last.text)
+    }
+
+    /// Takes back the last dictation with the front app's own Undo.
+    func undoLast() {
+        guard state == .idle else { return }
+        Inserter.undo()
     }
 }

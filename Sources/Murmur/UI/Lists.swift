@@ -42,6 +42,33 @@ struct DictionaryView: View {
                 }
             }
 
+            if !store.suggestions.isEmpty {
+                GroupTitle("From your corrections")
+                Card(padding: 0) {
+                    VStack(spacing: 0) {
+                        ForEach(Array(store.suggestions.enumerated()), id: \.element.id) { index, item in
+                            if index > 0 { RowDivider().padding(.leading, 16) }
+                            HStack(spacing: 8) {
+                                Text(item.heard).foregroundStyle(.secondary)
+                                Image(systemName: "arrow.right").font(.system(size: 11)).foregroundStyle(.tertiary)
+                                Text(item.write)
+                                Spacer()
+                                Button("Add") {
+                                    store.dictionary.insert(item, at: 0)
+                                    store.suggestions.removeAll { $0.id == item.id }
+                                }
+                                .accessibilityLabel("Add \(item.write) to the dictionary")
+                                IconButton(symbol: "xmark", help: "Dismiss \(item.write)") {
+                                    store.suggestions.removeAll { $0.id == item.id }
+                                }
+                            }
+                            .font(.system(size: 13))
+                            .padding(.horizontal, 16).padding(.vertical, 9)
+                        }
+                    }
+                }
+            }
+
             if store.dictionary.isEmpty {
                 Card {
                     EmptyState(symbol: "character.book.closed", title: "No words yet",
@@ -173,7 +200,7 @@ struct StylesView: View {
                     Text(level.blurb)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                    Example(level: level)
+                    CleanupSample(level: level)
                 }
             }
             Card(padding: 0) {
@@ -242,36 +269,3 @@ struct StylesView: View {
     }
 }
 
-private struct Example: View {
-    let level: CleanupLevel
-
-    private var after: String {
-        switch level {
-        case .off: return "So let's meet at five, no, six on Friday. And bring the the slides."
-        case .light: return "So let's meet at five, no, six on Friday, and bring the slides."
-        case .polished: return "Let's meet at six on Friday, and bring the slides."
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            line("You say", "um so let's meet at five no six on friday and uh bring the the slides", dim: true)
-            line("You get", after, dim: false)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
-    }
-
-    private func line(_ label: String, _ text: String, dim: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 52, alignment: .leading)
-            Text(text)
-                .font(.system(size: 12.5))
-                .foregroundStyle(dim ? Color.secondary : Color.primary)
-        }
-    }
-}

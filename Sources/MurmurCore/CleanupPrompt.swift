@@ -15,9 +15,13 @@ public enum CleanupPrompt {
         switch level {
         case .off, .light:
             lines.append("Change as little as possible beyond that.")
-        case .polished:
+        case .polished, .thorough:
             lines.append("Drop false starts and repeated words. When the speaker corrects themselves (\"at five, no, six\"), keep only the correction (\"at six\").")
             lines.append("When the speaker clearly dictates a list, format it as a list with one item per line. Break long speech into paragraphs.")
+            if level == .thorough {
+                lines.append("Remove verbal habits that carry no meaning: well, so, you know, like, I mean, basically, kind of, sort of, and repeated starts such as \"I, I, I\".")
+                lines.append("Tighten rambling sentences so each says its point once. Do not change what is said or add anything.")
+            }
         }
         switch tone {
         case .formal:
@@ -52,11 +56,13 @@ public enum CleanupPrompt {
 
         // A word said twice in a row is a stutter.
         let tokens = text.split(separator: " ")
-        for i in tokens.indices.dropFirst() where tokens[i] == tokens[i - 1] && tokens[i].count > 1 { return true }
+        for i in tokens.indices.dropFirst() where tokens[i] == tokens[i - 1] { return true }
 
         // Fillers the rules leave alone.
         for cue in [" you know ", " i mean ", " kind of ", " sort of ", " like like "] where text.contains(cue) { return true }
         if level == .light { return false }
+        // Thorough rewrites habits and rambling, which shows up in anything longer than a phrase.
+        if level == .thorough, words >= 6 { return true }
 
         // Polished also rewrites self-corrections, lists and long rambles.
         if TextRules.normalise(raw) != TextRules.normalise(ruled) { return true }   // fillers were present: disfluent speech
@@ -67,7 +73,7 @@ public enum CleanupPrompt {
         // "Second Tuesday" is not a list; "first ... second ..." is.
         if text.contains(" first "), text.contains(" second ") || text.contains(" then ") || text.contains(" next ") { return true }
         // Long dictation benefits from paragraphing.
-        return words > 120
+        return words > 40
     }
 
     public static func userMessage(_ transcript: String) -> String {

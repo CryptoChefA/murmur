@@ -27,6 +27,7 @@ cp "$WHISPER/include/whisper.h" "$WHISPER"/ggml/include/{ggml.h,ggml-cpu.h,ggml-
 # 2. The app and its checks.
 swift build -c release
 .build/release/MurmurCheck
+.build/release/Murmur --self-test
 
 # 3. The bundle.
 APP=dist/Murmur.app
@@ -35,6 +36,10 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/Murmur "$APP/Contents/MacOS/Murmur"
 strip -x "$APP/Contents/MacOS/Murmur"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# So the app can tell whether a newer version exists and rebuild itself from here.
+# These go into the built app only, never into the repository.
+/usr/libexec/PlistBuddy -c "Add :MurmurCommit string $(git rev-parse HEAD 2>/dev/null || true)" "$APP/Contents/Info.plist" >/dev/null
+/usr/libexec/PlistBuddy -c "Add :MurmurSource string $(pwd)" "$APP/Contents/Info.plist" >/dev/null
 
 # The icon is drawn by the app itself, then packed into an .icns.
 TMP=$(mktemp -d)

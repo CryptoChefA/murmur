@@ -12,7 +12,7 @@ if arguments.contains("--toggle") {
     DistributedNotificationCenter.default().postNotificationName(AppDelegate.previewNotification, object: text,
                                                                  userInfo: nil, deliverImmediately: true)
     exit(0)
-} else if arguments.contains("--transcribe") || arguments.contains("--render-screens") || arguments.contains("--render-icon") || arguments.contains("--render-demo") {
+} else if arguments.contains("--transcribe") || arguments.contains("--render-screens") || arguments.contains("--render-icon") || arguments.contains("--render-demo") || arguments.contains("--self-test") || arguments.contains("--bench-load") {
     CommandLineMode.run(arguments)
 } else {
     let app = NSApplication.shared

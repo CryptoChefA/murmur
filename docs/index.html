@@ -124,7 +124,7 @@ h1 { font-size: clamp(52px, 9.4vw, 112px); line-height: .98; letter-spacing: -.0
 
 /* Sections */
 section { padding: 130px 0; border-top: 1px solid var(--line); position: relative; }
-section#how { border-top: 0; }
+section#private { border-top: 0; }
 h2 { font-size: clamp(36px, 5.4vw, 64px); line-height: 1.03; letter-spacing: -.035em; font-weight: 700; margin: 0; max-width: 15ch; }
 .sub { margin: 20px 0 0; max-width: 58ch; font-size: 19px; color: #a9b0c4; }
 
@@ -226,9 +226,9 @@ footer a { color: var(--dim); }
   <div class="wrap">
     <a class="brand" href="#top"><img src="icon.png" alt="">Murmur</a>
     <nav aria-label="Sections">
+      <a href="#private">Privacy</a>
       <a href="#how">How it works</a>
       <a href="#light">Size and speed</a>
-      <a href="#private">Privacy</a>
       <a href="#install">Install</a>
       <a class="get" href="https://github.com/CryptoChefA/murmur">GitHub</a>
     </nav>
@@ -249,7 +249,7 @@ footer a { color: var(--dim); }
       </div>
 
       <h1><span class="reveal metal">Talk.</span> <span class="reveal metal">It types.</span></h1>
-      <p class="lede reveal">Murmur is a free dictation app for Mac. Hold a key, say what you mean, and let go. The words land in whatever app you're using, tidied up, and nothing you say leaves your computer.</p>
+      <p class="lede reveal">Murmur is a free dictation app for Mac that never sends your voice anywhere. Hold a key, say what you mean, and let go. The words land in whatever app you're using, tidied up.</p>
       <div class="actions reveal">
         <a class="btn primary" href="#install">Install Murmur</a>
         <a class="btn quiet" href="#how">See how it works</a>
@@ -260,6 +260,25 @@ footer a { color: var(--dim); }
   </div>
 
   <div class="interlude" id="interlude"><p>You already know what you want to say.</p></div>
+
+  <section id="private" class="private">
+    <div class="wrap">
+      <div class="head">
+        <div>
+          <h2 class="metal">Your voice never leaves your Mac.</h2>
+          <p class="sub">Most dictation apps send what you say to a server to be transcribed. Murmur does all of it on your computer, for free. There's no account to make and nothing is measured or reported back.</p>
+        </div>
+        <div class="slot ring" data-shape="ring">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.4"/><path d="M8.2 10.5V8a3.8 3.8 0 0 1 7.6 0v2.5"/></svg>
+        </div>
+      </div>
+      <div class="facts">
+        <div><h3>Audio is never saved</h3><p>It's held in memory while you speak and thrown away once it has been transcribed.</p></div>
+        <div><h3>Three reasons to go online</h3><p>Downloading the speech model once. A daily check for a newer version, which you can switch off. And cleanup through your own API key, only if you turn it on. None of them sends audio.</p></div>
+        <div><h3>History is a file you own</h3><p>Plain JSON in your Library folder. Keep it forever, keep it a week, or keep none of it.</p></div>
+      </div>
+    </div>
+  </section>
 
   <section id="how">
     <div class="wrap">
@@ -287,7 +306,7 @@ footer a { color: var(--dim); }
     <div class="wrap light">
       <div>
         <h2 class="metal">Small enough to forget it's running.</h2>
-        <p class="sub">One native app. No Python, no Electron, no server humming in the background. The speech model loads when you press the key and is released a few minutes after you stop, so it only costs memory while you're dictating.</p>
+        <p class="sub">One native app. No Python, no Electron, no server humming in the background. The speech model loads in a quarter of a second when you press the key, while you're already talking, and is released the moment you finish.</p>
       </div>
       <div>
         <div class="slot dot" data-shape="ball"></div>
@@ -299,25 +318,6 @@ footer a { color: var(--dim); }
           <tr><th scope="row">Nine seconds of speech, typed in</th><td>about 0.8 s</td></tr>
         </table>
         <p class="note">Measured on an M4 MacBook running macOS 27, with the model already loaded. The model itself is a separate 574 MB download.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="private" class="private">
-    <div class="wrap">
-      <div class="head">
-        <div>
-          <h2 class="metal">Your voice stays on your Mac.</h2>
-          <p class="sub">Transcription and cleanup both run on your computer. There's no account to make and nothing is measured or reported back.</p>
-        </div>
-        <div class="slot ring" data-shape="ring">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.4"/><path d="M8.2 10.5V8a3.8 3.8 0 0 1 7.6 0v2.5"/></svg>
-        </div>
-      </div>
-      <div class="facts">
-        <div><h3>Audio is never saved</h3><p>It's held in memory while you speak and thrown away once it has been transcribed.</p></div>
-        <div><h3>Two reasons to go online</h3><p>Downloading the speech model once, and cleanup through your own API key if you turn that on. That sends text, never audio.</p></div>
-        <div><h3>History is a file you own</h3><p>Plain JSON in your Library folder. Keep it forever, keep it a week, or keep none of it.</p></div>
       </div>
     </div>
   </section>
@@ -367,6 +367,18 @@ footer a { color: var(--dim); }
           <h3>Not only English</h3>
           <p>Pick from 20 languages or let Murmur work out which one you're speaking.</p>
         </div>
+        <div class="tile narrow">
+          <h3>Edit by voice</h3>
+          <p>Select a paragraph, hold a second key, and say "make this shorter" or "turn this into a list". It's rewritten in place.</p>
+        </div>
+        <div class="tile narrow">
+          <h3>It reads the room</h3>
+          <p>Names already in the message you're replying to are spelled the same way. Fix a word by hand and Murmur offers to remember it.</p>
+        </div>
+        <div class="tile narrow">
+          <h3>Whisper mode</h3>
+          <p>For open offices and sleeping partners. Speak under your breath and it still hears you.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -379,7 +391,8 @@ footer a { color: var(--dim); }
         <ul class="plain">
           <li><strong>You need</strong> macOS 14 or later on an Apple silicon Mac.</li>
           <li><strong>On-device cleanup</strong> needs macOS 26 with Apple Intelligence turned on. Without it Murmur still transcribes and tidies with its own rules.</li>
-          <li><strong>Coming next</strong> a download you can just open, and a choice of colours for the orb.</li>
+          <li><strong>Updates</strong> arrive in the app. It tells you when there's a new version and rebuilds itself when you say so.</li>
+          <li><strong>Coming next</strong> a download you can just open, with no building.</li>
         </ul>
       </div>
       <div>

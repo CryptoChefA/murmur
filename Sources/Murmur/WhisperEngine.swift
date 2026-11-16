@@ -23,8 +23,11 @@ final class WhisperEngine: @unchecked Sendable {
     private var loadedPath: String?
     private var unloadWork: DispatchWorkItem?
 
-    /// Minutes the model stays loaded after its last use. 0 releases it immediately.
-    var idleMinutes: Double = 5
+    /// Minutes the model stays loaded after a dictation ends. 0 releases it as soon as it does.
+    var idleMinutes: Double = 0
+    /// True from key-down until the dictation is over, so phrases transcribed while the speaker
+    /// is still talking don't each load and free the model.
+    private var inSession = false
 
     private(set) var isLoaded = false
 
@@ -41,9 +44,23 @@ final class WhisperEngine: @unchecked Sendable {
         whisper_log_set({ _, _, _ in }, nil)
     }
 
-    /// Starts loading in the background. Called on key-down so the model is ready by key-up.
-    func preload(modelPath: String) {
-        queue.async { _ = try? self.load(modelPath) }
+    /// Called on key-down. Loading takes about a quarter of a second, which happens while the
+    /// speaker is already talking, so the model is ready by key-up.
+    func begin(modelPath: String) {
+        queue.async {
+            self.inSession = true
+            _ = try? self.load(modelPath)
+        }
+    }
+
+    /// Called whenever a dictation is over, however it ended: typed, cancelled, too short, or
+    /// failed. Every path that loaded the model now leads to it being released.
+    func end() {
+        queue.async {
+            guard self.inSession else { return }
+            self.inSession = false
+            if self.context != nil { self.scheduleUnload() }
+        }
     }
 
     func transcribe(samples: [Float], modelPath: String, language: String, prompt: String) async throws -> String {
@@ -56,6 +73,27 @@ final class WhisperEngine: @unchecked Sendable {
                 }
             }
         }
+    }
+
+    /// For measuring: loads (or not), reports seconds taken and memory after, then frees.
+    func benchLoad(modelPath: String) -> (load: Double, loadedMB: Double, freedMB: Double) {
+        queue.sync {
+            let start = Date()
+            _ = try? self.load(modelPath)
+            let took = Date().timeIntervalSince(start)
+            let loaded = WhisperEngine.footprintMB()
+            self.release()
+            return (took, loaded, WhisperEngine.footprintMB())
+        }
+    }
+
+    static func footprintMB() -> Double {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+        }
+        return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
     }
 
     func unload() {
@@ -84,8 +122,11 @@ final class WhisperEngine: @unchecked Sendable {
 
     private func release() {
         unloadWork?.cancel(); unloadWork = nil
+        let had = context != nil
         if let context { whisper_free(context) }
         context = nil; loadedPath = nil; isLoaded = false
+        // The allocator keeps freed blocks for reuse; hand them back so the memory really goes.
+        if had { malloc_zone_pressure_relief(nil, 0) }
     }
 
     private func scheduleUnload() {
@@ -99,7 +140,8 @@ final class WhisperEngine: @unchecked Sendable {
 
     private func run(_ input: [Float], _ path: String, _ language: String, _ prompt: String) throws -> String {
         let ctx = try load(path)
-        defer { scheduleUnload() }
+        // During a dictation the session decides; outside one (command-line use) release after.
+        defer { if !inSession { scheduleUnload() } }
 
         // Whisper needs at least a second of audio; pad short clips with silence.
         var samples = input

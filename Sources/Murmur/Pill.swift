@@ -99,8 +99,8 @@ struct PillView: View {
     private var label: String {
         switch shown {
         case .hidden: return ""
-        case .listening: return "Listening"
-        case .thinking: return "Transcribing"
+        case .listening: return model.editing ? "How should it change?" : (model.live.isEmpty ? "Listening" : model.live)
+        case .thinking: return model.editing ? "Rewriting" : "Transcribing"
         case .notice(let message, _): return message.isEmpty ? "Done" : message
         }
     }
@@ -139,8 +139,9 @@ struct PillView: View {
                 .shadow(color: .black.opacity(0.9), radius: 2.5, y: 1)
                 .shadow(color: .black.opacity(0.55), radius: 9)
                 .lineLimit(1)
-                .fixedSize()
-                .id(label)
+                .truncationMode(.head)
+                .frame(maxWidth: 420)
+                .id(model.live.isEmpty ? label : "live")
                 .transition(.opacity)
                 .offset(y: -4)
                 .accessibilityLabel(problem ? "Problem: \(label)" : label)
@@ -148,6 +149,25 @@ struct PillView: View {
     }
 
     private var mercury: some View {
+        VStack(spacing: 2) {
+            mercuryRow
+            // Words already transcribed, or what the edit key is waiting for, sit quietly under the orb.
+            if listening, model.editing || !model.live.isEmpty {
+                Text(label)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .shadow(color: .black.opacity(0.9), radius: 2.5, y: 1)
+                    .shadow(color: .black.opacity(0.55), radius: 9)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .frame(maxWidth: 420)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: model.live)
+    }
+
+    private var mercuryRow: some View {
         // While you speak the orb stands alone in the centre. When you finish it shrinks and slides
         // to the left as a dark glass capsule opens beside it, saying what is happening.
         HStack(spacing: listening ? 8 : 10) {

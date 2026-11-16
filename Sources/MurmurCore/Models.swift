@@ -85,13 +85,14 @@ public struct StyleRule: Codable, Identifiable, Equatable {
 }
 
 public enum CleanupLevel: String, CaseIterable, Identifiable {
-    case off, light, polished
+    case off, light, polished, thorough
     public var id: String { rawValue }
     public var label: String {
         switch self {
         case .off: return "Off"
         case .light: return "Light"
         case .polished: return "Polished"
+        case .thorough: return "Thorough"
         }
     }
     public var blurb: String {
@@ -99,6 +100,7 @@ public enum CleanupLevel: String, CaseIterable, Identifiable {
         case .off: return "Whisper's transcript with your dictionary and snippets applied."
         case .light: return "Removes fillers and fixes punctuation. Your words stay as spoken."
         case .polished: return "Also drops false starts, applies self-corrections and formats lists."
+        case .thorough: return "Also removes verbal habits like “well”, “you know” and “like”, and tightens rambling sentences."
         }
     }
 }

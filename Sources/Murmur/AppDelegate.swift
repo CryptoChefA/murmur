@@ -24,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         dictation.onStateChange = { [weak self] in self?.updateIcon() }
         dictation.start()
         writeDiagnostics()
+        Shortcuts.shared.onPasteLast = { [weak self] in self?.dictation.pasteLast() }
+        Shortcuts.shared.onUndo = { [weak self] in self?.dictation.undoLast() }
+        Shortcuts.shared.apply(enabled: Prefs.defaults.bool(forKey: Prefs.Key.shortcuts))
+        // One look for a newer version, a little after launch. No repeating timer.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { Updater.shared.checkIfDue() }
 
         // `Murmur --toggle` from a script or launcher starts or finishes a dictation.
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(toggleDictation),
@@ -117,6 +122,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        Updater.shared.checkIfDue()
+        if case .available = Updater.shared.status {
+            let update = NSMenuItem(title: Updater.shared.canInstall ? "Update Murmur…" : "Update Available…",
+                                    action: #selector(installUpdate), keyEquivalent: "")
+            update.target = self
+            menu.addItem(update)
+            menu.addItem(.separator())
+        }
         let key = Hotkey.choice(Prefs.hotkey).label
 
         let toggle = NSMenuItem(title: dictation.isRecording ? "Finish Dictation" : "Start Dictation",
@@ -160,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     @objc private func toggleDictation() { dictation.toggleFromMenu() }
     @objc private func pasteLast() { dictation.pasteLast() }
+    @objc private func installUpdate() { showWindow(section: .settings); Updater.shared.install() }
     @objc private func openMain() { showWindow(section: nil) }
     @objc private func togglePause() { dictation.paused.toggle(); updateIcon() }
 

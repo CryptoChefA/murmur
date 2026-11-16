@@ -13,6 +13,33 @@ enum CommandLineMode {
             exit(0)
         }
 
+        if arguments.contains("--self-test") {
+            // Checks for the routines that live in the app rather than in MurmurCore.
+            var failures = 0
+            func expect(_ ok: Bool, _ what: String) { if !ok { failures += 1; print("FAIL \(what)") } }
+            let names = ScreenContext.names(in: "Hi Priya, thanks. The Kubernetes rollout is with Marcus and the QA team. Tomorrow works.")
+            expect(names == ["Priya", "Kubernetes", "Marcus"], "names on screen: \(names)")
+            let fix = Learner.correction(typed: "Send it to Prya today", before: "Notes:", after: "Notes: Send it to Priya today")
+            expect(fix?.heard == "Prya" && fix?.write == "Priya", "spots a corrected name")
+            expect(Learner.correction(typed: "Send it today", before: "", after: "Send it today") == nil, "no change, no suggestion")
+            expect(Learner.correction(typed: "Send it today", before: "", after: "Completely different sentence now") == nil, "a rewrite is not a correction")
+            expect(Learner.correction(typed: "Call the office", before: "", after: "Call the elephant") == nil, "unrelated word is not a correction")
+            print(failures == 0 ? "self-test: 5 checks, 0 failures" : "self-test: \(failures) failures")
+            exit(failures == 0 ? 0 : 1)
+        }
+
+        if arguments.contains("--bench-load") {
+            let path = value("--model") ?? ModelCatalog.path(for: ModelCatalog.defaultID)
+            print(String(format: "start: %.0f MB", WhisperEngine.footprintMB()))
+            for i in 1...4 {
+                let r = WhisperEngine.shared.benchLoad(modelPath: path)
+                print(String(format: "load %d: %.2f s, %.0f MB loaded, %.0f MB after free", i, r.load, r.loadedMB, r.freedMB))
+            }
+            if arguments.contains("--hold") { print("holding"); fflush(stdout); Thread.sleep(forTimeInterval: 25) }
+            WhisperEngine.shared.shutdown()
+            exit(0)
+        }
+
         if let dir = value("--render-demo") {
             MainActor.assumeIsolated { DemoRenderer.render(into: URL(fileURLWithPath: dir)) }
             exit(0)

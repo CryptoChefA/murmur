@@ -11,29 +11,72 @@ struct OverviewView: View {
     @AppStorage(Prefs.Key.cleanupLevel) private var cleanupLevel = CleanupLevel.polished.rawValue
     @AppStorage(Prefs.Key.cleanupEngine) private var cleanupEngine = CleanupEngine.onDevice.rawValue
 
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.staticRender) private var staticRender
+    @State private var shown = false
+    private var reduceMotion: Bool { systemReduceMotion || staticRender }
+
+    private var level: CleanupLevel { CleanupLevel(rawValue: cleanupLevel) ?? .polished }
+
     var body: some View {
         let stats = store.stats
+        let today = Calendar.current.startOfDay(for: Date())
+        let dictationsToday = store.history.filter { $0.date >= today }.count
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                StatCard(value: stats.wordsToday.formatted(), label: "words today")
-                StatCard(value: stats.wordsThisWeek.formatted(), label: "last 7 days")
-                StatCard(value: stats.wordsPerMinute == 0 ? "—" : "\(stats.wordsPerMinute)", label: "words per minute")
-                StatCard(value: stats.streak == 0 ? "—" : "\(stats.streak)", label: stats.streak == 1 ? "day streak" : "day streak")
-            }
-
-            Card {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Last 14 days").font(.system(size: 13, weight: .medium))
-                        Spacer()
-                        Text("\(stats.wordsAllTime.formatted()) words all time · \(Stats.formatDuration(stats.secondsSaved)) saved vs typing")
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(.secondary)
+            // Today, with the last two weeks beside it.
+            Card(padding: 22) {
+                HStack(alignment: .bottom, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Today").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            CountUp(value: shown || reduceMotion ? stats.wordsToday : 0)
+                                .font(.system(size: 58, weight: .bold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(Theme.chrome)
+                            Text(stats.wordsToday == 1 ? "word" : "words")
+                                .font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
+                        }
+                        Text(todayLine(dictations: dictationsToday, stats: stats))
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .padding(.top, 2)
                     }
-                    ActivityChart(days: stats.days)
-                        .frame(height: 120)
+                    .frame(minWidth: 190, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+
+                    VStack(alignment: .trailing, spacing: 8) {
+                        Text("Last 14 days").font(.system(size: 11)).foregroundStyle(.tertiary)
+                        ActivityChart(days: stats.days, grown: shown || reduceMotion)
+                            .frame(height: 104)
+                    }
                 }
             }
+            .modifier(Arrive(order: 0, shown: shown || reduceMotion))
+
+            HStack(spacing: 12) {
+                StatTile(symbol: "calendar", value: stats.wordsThisWeek, label: "words in the last 7 days", shown: shown || reduceMotion)
+                StatTile(symbol: "speedometer", value: stats.wordsPerMinute, label: "words a minute, speaking", shown: shown || reduceMotion)
+                StatTile(symbol: "flame", value: stats.streak, label: stats.streak == 1 ? "day in a row" : "days in a row", shown: shown || reduceMotion)
+            }
+            .modifier(Arrive(order: 1, shown: shown || reduceMotion))
+
+            // How much tidying, with a sentence that shows what each level does.
+            Card {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .center) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Cleanup").font(.system(size: 13, weight: .medium))
+                            Text(level.blurb).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 16)
+                        Picker("Cleanup level", selection: $cleanupLevel) {
+                            ForEach(CleanupLevel.allCases) { Text($0.label).tag($0.rawValue) }
+                        }
+                        .pickerStyle(.segmented).labelsHidden().fixedSize()
+                    }
+                    CleanupSample(level: level)
+                }
+            }
+            .modifier(Arrive(order: 2, shown: shown || reduceMotion))
 
             Card(padding: 0) {
                 VStack(spacing: 0) {
@@ -45,6 +88,7 @@ struct OverviewView: View {
                     statusRow(symbol: "lock", title: "Privacy", value: privacySummary, ok: true, problem: "")
                 }
             }
+            .modifier(Arrive(order: 3, shown: shown || reduceMotion))
 
             if !store.history.isEmpty {
                 HStack {
@@ -71,6 +115,15 @@ struct OverviewView: View {
             }
         }
         .id(downloader.revision)
+        .onAppear {
+            if reduceMotion { shown = true } else { withAnimation(.easeOut(duration: 0.9)) { shown = true } }
+        }
+    }
+
+    private func todayLine(dictations: Int, stats: Stats) -> String {
+        let saved = Stats.formatDuration(stats.secondsSaved)
+        let count = dictations == 0 ? "Nothing dictated yet today" : (dictations == 1 ? "1 dictation today" : "\(dictations) dictations today")
+        return stats.wordsAllTime == 0 ? count : "\(count). \(stats.wordsAllTime.formatted()) words in all, about \(saved) saved over typing."
     }
 
     private var cleanupSummary: String {
@@ -115,40 +168,84 @@ struct OverviewView: View {
     }
 }
 
-private struct StatCard: View {
-    let value: String
+/// A number that counts up to its value when it first appears and rolls when it changes.
+private struct CountUp: View, Animatable {
+    var value: Int
+    private var shownValue: Double
+    init(value: Int) { self.value = value; self.shownValue = Double(value) }
+    var animatableData: Double {
+        get { shownValue }
+        set { shownValue = newValue }
+    }
+    var body: some View { Text(Int(shownValue.rounded()).formatted()) }
+}
+
+/// Each block of the page settles into place in turn, once, when the page opens.
+private struct Arrive: ViewModifier {
+    let order: Int
+    let shown: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown || reduceMotion ? 1 : 0)
+            .offset(y: shown || reduceMotion ? 0 : 10)
+            .animation(.spring(response: 0.5, dampingFraction: 0.86).delay(Double(order) * 0.06), value: shown)
+    }
+}
+
+private struct StatTile: View {
+    let symbol: String
+    let value: Int
     let label: String
+    let shown: Bool
+    @State private var hovering = false
 
     var body: some View {
         Card {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(value)
-                    .font(.system(size: 26, weight: .semibold, design: .rounded).monospacedDigit())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.accent)
+                    .accessibilityHidden(true)
+                Group {
+                    if value == 0 { Text("0") } else { CountUp(value: shown ? value : 0) }
+                }
+                .font(.system(size: 26, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(value == 0 ? Color.secondary : Color.primary)
                 Text(label)
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
         }
+        .offset(y: hovering ? -2 : 0)
+        .animation(.easeOut(duration: 0.15), value: hovering)
+        .onHover { hovering = $0 }
         .accessibilityElement(children: .combine)
     }
 }
 
 private struct ActivityChart: View {
     let days: [Stats.Day]
+    var grown = true
     @State private var hovered: Date?
 
     var body: some View {
         let peak = max(days.map(\.words).max() ?? 0, 1)
-        HStack(alignment: .bottom, spacing: 6) {
-            ForEach(days) { day in
+        HStack(alignment: .bottom, spacing: 5) {
+            ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                 VStack(spacing: 6) {
                     ZStack(alignment: .bottom) {
                         Color.clear
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(day.words == 0 ? Color.primary.opacity(0.07) : Theme.accent.opacity(hovered == day.date ? 1 : 0.8))
-                            .frame(height: barHeight(day.words, peak: peak))
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(day.words == 0
+                                  ? AnyShapeStyle(Color.white.opacity(0.07))
+                                  : AnyShapeStyle(LinearGradient(colors: [Theme.silver, Theme.accent.opacity(hovered == day.date ? 1 : 0.75)],
+                                                                 startPoint: .top, endPoint: .bottom)))
+                            .frame(height: grown ? barHeight(day.words, peak: peak) : 3)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(Double(index) * 0.03), value: grown)
                     }
                     .overlay(alignment: .top) {
                         if hovered == day.date {
@@ -156,14 +253,15 @@ private struct ActivityChart: View {
                                 .font(.system(size: 10, weight: .medium).monospacedDigit())
                                 .foregroundStyle(.secondary)
                                 .fixedSize()
+                                .transition(.opacity)
                         }
                     }
                     Text(label(day.date))
                         .font(.system(size: 9.5))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Calendar.current.isDateInToday(day.date) ? Color.primary : Color.secondary.opacity(0.6))
                 }
                 .frame(maxWidth: .infinity)
-                .onHover { hovered = $0 ? day.date : nil }
+                .onHover { inside in withAnimation(.easeOut(duration: 0.12)) { hovered = inside ? day.date : nil } }
                 .accessibilityElement()
                 .accessibilityLabel("\(day.date.formatted(date: .abbreviated, time: .omitted)): \(day.words) words")
             }
@@ -172,7 +270,7 @@ private struct ActivityChart: View {
 
     private func barHeight(_ words: Int, peak: Int) -> CGFloat {
         if words == 0 { return 3 }
-        return max(6, CGFloat(words) / CGFloat(peak) * 84)
+        return max(6, CGFloat(words) / CGFloat(peak) * 70)
     }
 
     private func label(_ date: Date) -> String {

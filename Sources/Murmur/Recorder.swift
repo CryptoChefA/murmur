@@ -2,8 +2,12 @@ import AVFoundation
 import CoreAudio
 import MurmurCore
 
-/// Captures the microphone as 16 kHz mono floats. A fresh engine is created for each
-/// recording and torn down afterwards, so the mic indicator is only on while dictating.
+/// Captures the microphone as 16 kHz mono floats, through Core Audio's own input unit.
+///
+/// The microphone is chosen before anything is opened. That matters for Bluetooth headsets:
+/// opening a headset's microphone even for a moment switches it to call mode, which turns any
+/// music playing through it to low quality. (The previous AVAudioEngine version opened the
+/// system default first and switched afterwards, which was already too late.)
 final class Recorder {
     enum Failure: LocalizedError {
         case noPermission, noInput
@@ -21,46 +25,81 @@ final class Recorder {
     var onPause: ((Int) -> Void)?
     private var detector = PauseDetector()
 
-    private var engine: AVAudioEngine?
+    private var unit: AudioUnit?
     private var converter: AVAudioConverter?
+    private var capture: AVAudioPCMBuffer?
+    private var ratio = 1.0
     private var samples: [Float] = []
     private var peak: Float = 0
     private let lock = NSLock()
 
-    var isRecording: Bool { engine != nil }
+    /// The microphone actually in use for the current recording.
+    private(set) var deviceName = ""
+
+    var isRecording: Bool { unit != nil }
 
     func start(deviceUID: String) throws {
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { throw Failure.noPermission }
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
+        guard let device = Recorder.chooseDevice(uid: deviceUID) else { throw Failure.noInput }
 
-        if !deviceUID.isEmpty, let id = AudioDevices.id(forUID: deviceUID), let unit = input.audioUnit {
-            var device = id
-            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
-                                 &device, UInt32(MemoryLayout<AudioDeviceID>.size))
-        }
+        var description = AudioComponentDescription(componentType: kAudioUnitType_Output, componentSubType: kAudioUnitSubType_HALOutput,
+                                                    componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0)
+        guard let component = AudioComponentFindNext(nil, &description) else { throw Failure.noInput }
+        var made: AudioUnit?
+        guard AudioComponentInstanceNew(component, &made) == noErr, let unit = made else { throw Failure.noInput }
 
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0,
-              let converter = AVAudioConverter(from: format, to: AudioFormat.whisper) else { throw Failure.noInput }
-        self.converter = converter
+        func fail() -> Failure { AudioComponentInstanceDispose(unit); return .noInput }
+        // Input on, output off: this unit only listens.
+        var on: UInt32 = 1, off: UInt32 = 0
+        let flag = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &on, flag) == noErr,
+              AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0, &off, flag) == noErr else { throw fail() }
+        var chosen = device
+        guard AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                   &chosen, UInt32(MemoryLayout<AudioDeviceID>.size)) == noErr else { throw fail() }
+
+        // The device's own rate; Murmur takes one channel of 32-bit floats at that rate.
+        var hardware = AudioStreamBasicDescription()
+        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        guard AudioUnitGetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 1, &hardware, &size) == noErr,
+              hardware.mSampleRate > 0 else { throw fail() }
+        guard let clientFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: hardware.mSampleRate, channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: clientFormat, to: AudioFormat.whisper),
+              let capture = AVAudioPCMBuffer(pcmFormat: clientFormat, frameCapacity: 8_192) else { throw fail() }
+        var client = clientFormat.streamDescription.pointee
+        guard AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &client, size) == noErr else { throw fail() }
+
+        var callback = AURenderCallbackStruct(inputProc: { refCon, flags, time, bus, frames, _ in
+            let recorder = Unmanaged<Recorder>.fromOpaque(refCon).takeUnretainedValue()
+            recorder.pull(flags, time, bus, frames)
+            return noErr
+        }, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
+        guard AudioUnitSetProperty(unit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0,
+                                   &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size)) == noErr else { throw fail() }
+
         lock.lock(); samples.removeAll(keepingCapacity: true); samples.reserveCapacity(16_000 * 30); peak = 0; detector = PauseDetector(); lock.unlock()
-
-        let ratio = 16_000 / format.sampleRate
-        input.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, _ in
-            self?.consume(buffer, ratio: ratio)
+        self.converter = converter
+        self.capture = capture
+        self.ratio = 16_000 / hardware.mSampleRate
+        self.deviceName = AudioDevices.name(of: device) ?? ""
+        self.unit = unit
+        guard AudioUnitInitialize(unit) == noErr, AudioOutputUnitStart(unit) == noErr else {
+            self.unit = nil
+            AudioUnitUninitialize(unit)
+            throw fail()
         }
-        engine.prepare()
-        try engine.start()
-        self.engine = engine
     }
 
     /// Stops and returns what was captured, plus the loudest level seen (0...1).
     func stop() -> (samples: [Float], peak: Float) {
-        engine?.inputNode.removeTap(onBus: 0)
-        engine?.stop()
-        engine = nil
+        if let unit {
+            AudioOutputUnitStop(unit)
+            AudioUnitUninitialize(unit)
+            AudioComponentInstanceDispose(unit)
+        }
+        unit = nil
         converter = nil
+        capture = nil
         lock.lock(); defer { lock.unlock() }
         let result = (samples, peak)
         samples = []
@@ -74,7 +113,30 @@ final class Recorder {
         return clamped.isEmpty ? [] : Array(samples[clamped])
     }
 
-    private func consume(_ buffer: AVAudioPCMBuffer, ratio: Double) {
+    /// The microphone to open: the one picked in Settings if it is connected, otherwise the
+    /// system default, except that a Bluetooth headset is passed over for the Mac's own
+    /// microphone when that setting is on.
+    static func chooseDevice(uid: String) -> AudioDeviceID? {
+        if !uid.isEmpty, let picked = AudioDevices.id(forUID: uid) { return picked }
+        guard let fallback = AudioDevices.defaultInput else { return AudioDevices.builtInInput }
+        if Prefs.defaults.bool(forKey: Prefs.Key.avoidBluetoothMic), AudioDevices.isBluetooth(fallback),
+           let builtIn = AudioDevices.builtInInput { return builtIn }
+        return fallback
+    }
+
+    // MARK: - Audio thread
+
+    private func pull(_ flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>, _ time: UnsafePointer<AudioTimeStamp>,
+                      _ bus: UInt32, _ frames: UInt32) {
+        guard let unit, let capture, frames <= capture.frameCapacity else { return }
+        capture.frameLength = frames
+        let list = capture.mutableAudioBufferList
+        list.pointee.mBuffers.mDataByteSize = frames * 4
+        guard AudioUnitRender(unit, flags, time, bus, frames, list) == noErr else { return }
+        consume(capture)
+    }
+
+    private func consume(_ buffer: AVAudioPCMBuffer) {
         guard let converter else { return }
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 64
         guard let out = AVAudioPCMBuffer(pcmFormat: AudioFormat.whisper, frameCapacity: capacity) else { return }
@@ -126,6 +188,45 @@ enum AudioDevices {
             result.append(AudioDevice(id: id, uid: uid, name: name))
         }
         return result
+    }
+
+    private static func transport(_ id: AudioDeviceID) -> UInt32 {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType,
+                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var value: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value)
+        return value
+    }
+
+    static var defaultInput: AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id) == noErr, id != 0 else { return nil }
+        return id
+    }
+
+    static func isBluetooth(_ id: AudioDeviceID) -> Bool {
+        let kind = transport(id)
+        return kind == kAudioDeviceTransportTypeBluetooth || kind == kAudioDeviceTransportTypeBluetoothLE
+    }
+
+    static func name(of id: AudioDeviceID) -> String? { string(id, kAudioObjectPropertyName) }
+
+    static var defaultInputIsBluetooth: Bool {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
+                                                 mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id) == noErr else { return false }
+        let kind = transport(id)
+        return kind == kAudioDeviceTransportTypeBluetooth || kind == kAudioDeviceTransportTypeBluetoothLE
+    }
+
+    static var builtInInput: AudioDeviceID? {
+        inputs().first { transport($0.id) == kAudioDeviceTransportTypeBuiltIn }?.id
     }
 
     static func id(forUID uid: String) -> AudioDeviceID? {

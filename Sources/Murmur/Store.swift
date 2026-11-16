@@ -14,7 +14,7 @@ enum Prefs {
             Key.language: "en",
             Key.cleanupLevel: CleanupLevel.polished.rawValue,
             Key.cleanupEngine: CleanupEngine.onDevice.rawValue,
-            Key.idleMinutes: 5.0,
+            Key.idleMinutes: 0.0,
             Key.sounds: true,
             Key.spokenCommands: true,
             Key.removeFillers: true,
@@ -23,6 +23,16 @@ enum Prefs {
             Key.streaming: true,
             Key.keepOnClipboard: false,
             Key.orbStyle: "mercury",
+            Key.orbTint: "chrome",
+            Key.whisperMode: false,
+            Key.livePreview: true,
+            Key.contextNames: true,
+            Key.learnWords: true,
+            Key.editKey: "rightOption",
+            Key.shortcuts: true,
+            Key.updateChecks: true,
+            Key.avoidBluetoothMic: true,
+            Key.whileDictating: "pause",
         ])
     }
 
@@ -46,6 +56,23 @@ enum Prefs {
         static let keepOnClipboard = "keepOnClipboard"
         /// Which orb is drawn: "mercury" or "halftone".
         static let orbStyle = "orbStyle"
+        static let orbTint = "orbTint"
+        /// Tuned for very quiet speech.
+        static let whisperMode = "whisperMode"
+        /// Show finished phrases under the orb while still speaking.
+        static let livePreview = "livePreview"
+        /// Read names from the text box being typed into, to spell them right.
+        static let contextNames = "contextNames"
+        /// Offer dictionary entries when a dictated word is corrected by hand.
+        static let learnWords = "learnWords"
+        /// The key held to edit selected text by voice, or "none".
+        static let editKey = "editKey"
+        static let shortcuts = "shortcuts"
+        static let updateChecks = "updateChecks"
+        /// Use the Mac's own microphone when the default one is a Bluetooth headset.
+        static let avoidBluetoothMic = "avoidBluetoothMic"
+        /// What happens to music while dictating: "pause", "lower" or "off".
+        static let whileDictating = "whileDictating"
         static let didOnboard = "didOnboard"
     }
 
@@ -61,6 +88,11 @@ enum Prefs {
     static var retentionDays: Int { defaults.integer(forKey: Key.retentionDays) }
     static var streaming: Bool { defaults.bool(forKey: Key.streaming) }
     static var keepOnClipboard: Bool { defaults.bool(forKey: Key.keepOnClipboard) }
+    static var whisperMode: Bool { defaults.bool(forKey: Key.whisperMode) }
+    static var livePreview: Bool { defaults.bool(forKey: Key.livePreview) }
+    static var contextNames: Bool { defaults.bool(forKey: Key.contextNames) }
+    static var learnWords: Bool { defaults.bool(forKey: Key.learnWords) }
+    static var editKey: String { defaults.string(forKey: Key.editKey) ?? "rightOption" }
     static var micUID: String { defaults.string(forKey: Key.micUID) ?? "" }
 
     /// English-only models can't be asked for anything else.
@@ -85,6 +117,8 @@ final class Store: ObservableObject {
     @Published var dictionary: [Replacement] { didSet { persist(dictionary, "dictionary.json") } }
     @Published var snippets: [Snippet] { didSet { persist(snippets, "snippets.json") } }
     @Published var styles: [StyleRule] { didSet { persist(styles, "styles.json") } }
+    /// Corrections Murmur noticed and is offering as dictionary entries. Not saved between launches.
+    @Published var suggestions: [Replacement] = []
 
     private let directory: URL?
 
@@ -107,6 +141,12 @@ final class Store: ObservableObject {
     }
 
     var stats: Stats { Stats.compute(history) }
+
+    func suggest(_ replacement: Replacement) {
+        let known = dictionary.contains { $0.write.lowercased() == replacement.write.lowercased() }
+        let offered = suggestions.contains { $0.write.lowercased() == replacement.write.lowercased() }
+        if !known, !offered { suggestions.insert(replacement, at: 0) }
+    }
 
     func add(_ entry: HistoryEntry) {
         let days = Prefs.retentionDays

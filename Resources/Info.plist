@@ -8,11 +8,14 @@
     <key>CFBundleExecutable</key><string>Murmur</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
+    <!-- Without this, macOS keeps ~120 MB of freed speech-model buffers for reuse after the model is released. -->
+    <key>LSEnvironment</key><dict><key>MallocLargeCache</key><string>0</string></dict>
     <key>CFBundleShortVersionString</key><string>1.0.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSAppleEventsUsageDescription</key><string>Murmur pauses Spotify or Music while you dictate and resumes them when you finish.</string>
     <key>NSMicrophoneUsageDescription</key><string>Murmur listens only while you hold the dictation key, and transcribes on this Mac.</string>
     <key>NSHumanReadableCopyright</key><string>MIT License</string>
 </dict>

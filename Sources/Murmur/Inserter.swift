@@ -33,6 +33,49 @@ enum Permissions {
 enum Inserter {
     enum Outcome { case pasted, copiedOnly }
 
+    private static func press(_ key: CGKeyCode) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
+        down?.flags = .maskCommand
+        up?.flags = .maskCommand
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+    }
+
+    /// Takes back the last thing typed in the app in front, with its own Undo.
+    static func undo() {
+        guard Permissions.accessibility else { return }
+        press(6)
+    }
+
+    /// Copies whatever is selected in the app in front and hands it over, then puts the
+    /// clipboard back as it was.
+    static func selection(_ done: @escaping (String) -> Void) {
+        guard Permissions.accessibility else { done(""); return }
+        let pasteboard = NSPasteboard.general
+        let saved: [[NSPasteboard.PasteboardType: Data]] = (pasteboard.pasteboardItems ?? []).map { item in
+            var contents: [NSPasteboard.PasteboardType: Data] = [:]
+            for type in item.types { if let data = item.data(forType: type) { contents[type] = data } }
+            return contents
+        }
+        pasteboard.clearContents()
+        let marker = pasteboard.changeCount
+        press(8)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            let text = pasteboard.changeCount != marker ? (pasteboard.string(forType: .string) ?? "") : ""
+            pasteboard.clearContents()
+            if !saved.isEmpty {
+                pasteboard.writeObjects(saved.map { contents in
+                    let item = NSPasteboardItem()
+                    for (type, data) in contents { item.setData(data, forType: type) }
+                    return item
+                })
+            }
+            done(text)
+        }
+    }
+
     @discardableResult
     static func insert(_ text: String) -> Outcome {
         let pasteboard = NSPasteboard.general
